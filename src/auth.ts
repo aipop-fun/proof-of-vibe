@@ -5,6 +5,7 @@ import { createAppClient, viemConnector } from "@farcaster/auth-client";
 declare module "next-auth" {
   interface Session {
     user: {
+      name: string;
       fid: number;
     };
   }
