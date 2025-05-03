@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { getSession } from "~/auth"
+import { auth } from "~/auth"
 import "~/app/globals.css";
 import { Providers } from "~/app/providers";
 
@@ -13,8 +13,8 @@ export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
-}>) {  
-  const session = await getSession()
+}>) {
+  const session = await auth()
 
   return (
     <html lang="en">

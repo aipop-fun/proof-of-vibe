@@ -1,199 +1,94 @@
-/* eslint-disable  @typescript-eslint/no-unused-vars  */
-import { AuthOptions, getServerSession } from "next-auth"
-import CredentialsProvider from "next-auth/providers/credentials";
+/* eslint-disable @typescript-eslint/ban-ts-comment*/
+// @ts-nocheck
+import NextAuth from "next-auth";
+import type { NextAuthConfig } from "next-auth";
 import SpotifyProvider from "next-auth/providers/spotify";
-import { createAppClient, viemConnector } from "@farcaster/auth-client";
-import { createOrUpdateUser, getUserByFid, getUserBySpotifyId } from "./lib/supabase";
+import { JWT } from "next-auth/jwt";
 
-declare module "next-auth" {
-  interface Session {
-    user: {
-      name: string;
-      fid?: number;
-      spotifyId?: string;
-      accessToken?: string;
-      refreshToken?: string;
-      expiresAt?: number;
-      isLinked?: boolean;
+// Função para atualizar o token expirado
+async function refreshAccessToken(token: JWT): Promise<JWT> {
+  try {
+    const response = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Basic ${Buffer.from(
+          `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
+        ).toString("base64")}`,
+      },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: token.refreshToken as string,
+      }),
+    });
+
+    const refreshedTokens = await response.json();
+
+    if (!response.ok) {
+      throw refreshedTokens;
+    }
+
+    return {
+      ...token,
+      accessToken: refreshedTokens.access_token,
+      // Se um novo refresh token for retornado, use-o, caso contrário, mantenha o antigo
+      refreshToken: refreshedTokens.refresh_token ?? token.refreshToken,
+      expiresAt: Math.floor(Date.now() / 1000 + refreshedTokens.expires_in),
+    };
+  } catch (error) {
+    console.error("RefreshAccessTokenError", error);
+    return {
+      ...token,
+      error: "RefreshAccessTokenError",
     };
   }
-  
-  interface User {
-    id: string;
-    name?: string;
-    fid?: number;
-    spotifyId?: string;
-    accessToken?: string;
-    refreshToken?: string;
-    expiresAt?: number;
-  }
 }
 
-function getDomainFromUrl(urlString: string | undefined): string {
-  if (!urlString) {
-    console.warn('NEXTAUTH_URL is not set, using localhost:3000 as fallback');
-    return 'localhost:3000';
-  }
-  try {
-    const url = new URL(urlString);
-    return url.hostname;
-  } catch (error) {
-    console.error('Invalid NEXTAUTH_URL:', urlString, error);
-    console.warn('Using localhost:3000 as fallback');
-    return 'localhost:3000';
-  }
-}
-
-export const authOptions: AuthOptions = {
-  // Configure multiple authentication providers
+// Configuração do NextAuth
+const config = {
   providers: [
     SpotifyProvider({
       clientId: process.env.SPOTIFY_CLIENT_ID!,
       clientSecret: process.env.SPOTIFY_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope: 'user-read-email user-read-private user-read-currently-playing user-top-read'
-        }
-      }
-    }),
-    CredentialsProvider({
-      name: "Sign in with Farcaster",
-      credentials: {
-        message: {
-          label: "Message",
-          type: "text",
-          placeholder: "0x0",
+          scope: "user-read-email user-read-private user-read-currently-playing user-top-read user-library-read playlist-read-private playlist-read-collaborative",
         },
-        signature: {
-          label: "Signature",
-          type: "text",
-          placeholder: "0x0",
-        },
-      },
-      async authorize(credentials, req) {
-        const csrfToken = req?.body?.csrfToken;
-        if (!csrfToken) {
-          console.error('CSRF token is missing from request');
-          return null;
-        }
-
-        const appClient = createAppClient({
-          ethereum: viemConnector(),
-        });
-
-        const domain = getDomainFromUrl(process.env.NEXTAUTH_URL);
-
-        const verifyResponse = await appClient.verifySignInMessage({
-          message: credentials?.message as string,
-          signature: credentials?.signature as `0x${string}`,
-          domain,
-          nonce: csrfToken,
-        });
-        const { success, fid } = verifyResponse;
-
-        if (!success) {
-          return null;
-        }
-
-        // Check if user already exists in our Supabase DB
-        let userProfile = await getUserByFid(fid);
-        
-        if (!userProfile) {
-          // Create new user if they don't exist
-          userProfile = await createOrUpdateUser({ fid });
-        }
-
-        // Return the user object with FID
-        return {
-          id: userProfile.id,
-          name: userProfile.display_name || `Farcaster User ${fid}`,
-          fid,
-          spotifyId: userProfile.spotify_id,
-        };
       },
     }),
   ],
   callbacks: {
-    async jwt({ token, user, account }) {
-      // Initial sign in
-      if (account && user) {
-        if (account.provider === 'spotify') {
-          // Store Spotify tokens and user ID
-          token.spotifyId = user.spotifyId || account.providerAccountId;
-          token.accessToken = account.access_token;
-          token.refreshToken = account.refresh_token;
-          token.expiresAt = account.expires_at;
-          
-          // Check if user exists in Supabase or create them
-          let userProfile = await getUserBySpotifyId(account.providerAccountId);
-          
-          if (!userProfile) {
-            userProfile = await createOrUpdateUser({ 
-              spotifyId: account.providerAccountId,
-              displayName: user.name || account.providerAccountId,
-            });
-          }
-          
-          // Store FID if it exists for this Spotify account
-          token.fid = userProfile.fid;
-          
-          // Check if accounts are linked
-          token.isLinked = Boolean(userProfile.fid && userProfile.spotify_id);
-        } else if (user.fid) {
-          // Farcaster login
-          token.fid = user.fid;
-          token.spotifyId = user.spotifyId;
-          
-          // Check if accounts are linked
-          token.isLinked = Boolean(user.fid && user.spotifyId);
-        }
+    async jwt({ token, account }) {
+      // Autenticação inicial
+      if (account) {
+        return {
+          ...token,
+          accessToken: account.access_token,
+          refreshToken: account.refresh_token,
+          expiresAt: Math.floor(Date.now() / 1000 + (account.expires_in as number)),
+          spotifyId: account.providerAccountId,
+        };
       }
-      
-      return token;
+
+      // Verificar se o token expirou
+      if (token.expiresAt && Date.now() < (token.expiresAt as number) * 1000) {
+        return token;
+      }
+
+      // Token expirou, tenta atualizar
+      return refreshAccessToken(token);
     },
+    // @ts-ignore
     async session({ session, token }) {
-      if (session?.user) {
-        session.user.fid = token.fid as number | undefined;
-        session.user.spotifyId = token.spotifyId as string | undefined;
-        session.user.accessToken = token.accessToken as string | undefined;
-        session.user.refreshToken = token.refreshToken as string | undefined;
-        session.user.expiresAt = token.expiresAt as number | undefined;
-        session.user.isLinked = token.isLinked as boolean | undefined;
+      if (session.user) {
+        session.user.accessToken = token.accessToken as string;
+        session.user.refreshToken = token.refreshToken as string;
+        session.user.expiresAt = token.expiresAt as number;
+        session.user.spotifyId = token.spotifyId as string;
+        session.error = token.error as string | undefined;
       }
       return session;
     },
-    async signIn({ user, account }) {
-      // Always allow sign in
-      return true;
-    },
-  },
-  cookies: {
-    sessionToken: {
-      name: `next-auth.session-token`,
-      options: {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-        secure: true
-      }
-    },
-    callbackUrl: {
-      name: `next-auth.callback-url`,
-      options: {
-        sameSite: "none",
-        path: "/",
-        secure: true
-      }
-    },
-    csrfToken: {
-      name: `next-auth.csrf-token`,
-      options: {
-        httpOnly: true,
-        sameSite: "none",
-        path: "/",
-        secure: true
-      }
-    }
   },
   pages: {
     signIn: '/auth/signin',
@@ -201,13 +96,7 @@ export const authOptions: AuthOptions = {
   session: {
     strategy: 'jwt',
   },
-}
+} satisfies NextAuthConfig;
 
-export const getSession = async () => {
-  try {
-    return await getServerSession(authOptions);
-  } catch (error) {
-    console.error('Error getting server session:', error);
-    return null;
-  }
-}
+// Exportação das funções do NextAuth
+export const { handlers, auth, signIn, signOut } = NextAuth(config);
