@@ -101,7 +101,7 @@ export const TopWeeklyTracks: FC<TopWeeklyTracksProps> = ({ isLoading }) => {
                 
 
             {
-// @ts-expect-error
+// @ts-ignore
 track.listenerCount ?? 0}
               </p>
               <p className="text-xs text-gray-400">listeners</p>
@@ -110,7 +110,7 @@ track.listenerCount ?? 0}
 
           <div className="mt-2">
             {
-              // @ts-expect-error
+              // @ts-ignore
 track.listeners && track.listeners.length > 0 && (
               <button
                 className="text-xs text-purple-400 hover:text-purple-300"
@@ -121,11 +121,11 @@ track.listeners && track.listeners.length > 0 && (
             )}
 
             {
-              // @ts-expect-error
+              // @ts-ignore
     expandedTrack === track.id && track.listeners && (
               <div className="mt-2 grid grid-cols-2 gap-2">
                 {
-                    // @ts-expect-error
+                    // @ts-ignore
 track.listeners.map((listener, i) => (
                   <div
                     key={i}

@@ -1,16 +1,18 @@
+/* eslint-disable  @typescript-eslint/no-unused-vars */
 "use client";
 
 import { useEffect, useState } from "react";
 import { useFrame } from "~/components/providers/FrameProvider";
 import { useSession } from "next-auth/react";
-import { SignInWithFarcaster } from "~/components/SignInWithFarcaster";
 import { Dashboard } from "~/components/Dashboard";
 import { MusicProvider } from "~/components/MusicContext";
-import { Session } from "next-auth";
+import { Button } from "~/components/ui/Button";
+import { useRouter } from "next/navigation";
 
 export default function App() {
   const { isSDKLoaded, context } = useFrame();
   const { data: session, status } = useSession();
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {    
@@ -20,12 +22,37 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  if (isLoading || !isSDKLoaded) {
+  // Redirect to sign-in page if not authenticated
+  useEffect(() => {
+    if (!isLoading && status === 'unauthenticated') {
+      router.push('/auth/signin');
+    }
+  }, [isLoading, status, router]);
+
+  if (isLoading || !isSDKLoaded || status === 'loading') {
     return (
       <div className="flex items-center justify-center h-screen bg-gradient-to-b from-purple-900 to-black text-white">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4">Proof of Vibes</h1>
           <p className="animate-pulse">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If not authenticated, show a button to go to sign-in page
+  if (status === 'unauthenticated') {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-b from-purple-900 to-black text-white px-4">
+        <div className="text-center max-w-md w-full">
+          <h1 className="text-3xl font-bold mb-6">Proof of Vibes</h1>
+          <p className="mb-8">Connect your Spotify and Farcaster accounts to share your music with friends on Farcaster.</p>
+          <Button 
+            onClick={() => router.push('/auth/signin')}
+            className="w-full bg-purple-600 hover:bg-purple-700 py-3"
+          >
+            Get Started
+          </Button>
         </div>
       </div>
     );
@@ -41,18 +68,9 @@ export default function App() {
         paddingRight: context?.client.safeAreaInsets?.right ?? 0,
       }}
     >
-
-      {status === "authenticated" ? (
-        <div className="flex flex-col items-center justify-center flex-grow px-4 py-8">
-          <h1 className="text-3xl font-bold mb-8">Proof of Vibes</h1>
-          <p className="text-center mb-8">Connect your Farcaster account to see what your friends are listening to</p>
-          <SignInWithFarcaster />
-        </div>
-      ) : (
-        <MusicProvider>
-          <Dashboard session={session as unknown as Session} />
-        </MusicProvider>
-      )}
+      <MusicProvider>
+        <Dashboard />
+      </MusicProvider>
     </div>
   );
 }

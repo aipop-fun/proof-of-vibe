@@ -9,6 +9,7 @@ import sdk from "@farcaster/frame-sdk";
 // Define a more flexible interface that can handle different data structures
 interface FriendListeningItem {
   id: string;
+  timestamp?: number | string;
   [key: string]: any;
   track?: {
     title: string;
@@ -16,7 +17,7 @@ interface FriendListeningItem {
     albumArt?: string;
     coverArt?: string;
     album?: string;
-    type?: 'song' | 'podcast';
+    type?: string;
     currentTime?: string;
     duration?: string;
   };
@@ -98,7 +99,6 @@ export const FriendsListening: FC<FriendsListeningProps> = ({ isLoading }) => {
         <div key={friend.id} className="bg-purple-800/30 p-4 rounded-lg flex">
           <div
             className="w-12 h-12 rounded-full bg-purple-700 cursor-pointer flex-shrink-0"
-            // @ts-expect-error
             onClick={() => viewProfile(friend.fid)}
           >
             <img
@@ -113,7 +113,6 @@ export const FriendsListening: FC<FriendsListeningProps> = ({ isLoading }) => {
               <div>
                 <p
                   className="font-medium cursor-pointer hover:underline"
-                  // @ts-expect-error
                   onClick={() => viewProfile(friend.fid)}
                 >
                   {getProfileName(friend)}
@@ -121,12 +120,10 @@ export const FriendsListening: FC<FriendsListeningProps> = ({ isLoading }) => {
                 {friend.username && (
                   <p className="text-xs text-gray-400">@{friend.username}</p>
                 )}
-              </div>
               <span className="text-xs text-gray-400">
-                {
-                  // @ts-expect-error
-                formatTimestamp(friend.timestamp)}
+                {formatTimestamp(friend.timestamp)}
               </span>
+              </div>
             </div>
 
             {friend.track && (

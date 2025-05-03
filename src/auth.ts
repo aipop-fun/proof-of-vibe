@@ -1,13 +1,31 @@
+/* eslint-disable  @typescript-eslint/no-unused-vars  */
 import { AuthOptions, getServerSession } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials";
+import SpotifyProvider from "next-auth/providers/spotify";
 import { createAppClient, viemConnector } from "@farcaster/auth-client";
+import { createOrUpdateUser, getUserByFid, getUserBySpotifyId } from "./lib/supabase";
 
 declare module "next-auth" {
   interface Session {
     user: {
       name: string;
-      fid: number;
+      fid?: number;
+      spotifyId?: string;
+      accessToken?: string;
+      refreshToken?: string;
+      expiresAt?: number;
+      isLinked?: boolean;
     };
+  }
+  
+  interface User {
+    id: string;
+    name?: string;
+    fid?: number;
+    spotifyId?: string;
+    accessToken?: string;
+    refreshToken?: string;
+    expiresAt?: number;
   }
 }
 
@@ -27,8 +45,17 @@ function getDomainFromUrl(urlString: string | undefined): string {
 }
 
 export const authOptions: AuthOptions = {
-    // Configure one or more authentication providers
+  // Configure multiple authentication providers
   providers: [
+    SpotifyProvider({
+      clientId: process.env.SPOTIFY_CLIENT_ID!,
+      clientSecret: process.env.SPOTIFY_CLIENT_SECRET!,
+      authorization: {
+        params: {
+          scope: 'user-read-email user-read-private user-read-currently-playing user-top-read'
+        }
+      }
+    }),
     CredentialsProvider({
       name: "Sign in with Farcaster",
       credentials: {
@@ -39,20 +66,6 @@ export const authOptions: AuthOptions = {
         },
         signature: {
           label: "Signature",
-          type: "text",
-          placeholder: "0x0",
-        },
-        // In a production app with a server, these should be fetched from
-        // your Farcaster data indexer rather than have them accepted as part
-        // of credentials.
-        // question: should these natively use the Neynar API?
-        name: {
-          label: "Name",
-          type: "text",
-          placeholder: "0x0",
-        },
-        pfp: {
-          label: "Pfp",
           type: "text",
           placeholder: "0x0",
         },
@@ -82,18 +95,76 @@ export const authOptions: AuthOptions = {
           return null;
         }
 
+        // Check if user already exists in our Supabase DB
+        let userProfile = await getUserByFid(fid);
+        
+        if (!userProfile) {
+          // Create new user if they don't exist
+          userProfile = await createOrUpdateUser({ fid });
+        }
+
+        // Return the user object with FID
         return {
-          id: fid.toString(),
+          id: userProfile.id,
+          name: userProfile.display_name || `Farcaster User ${fid}`,
+          fid,
+          spotifyId: userProfile.spotify_id,
         };
       },
     }),
   ],
   callbacks: {
-    session: async ({ session, token }) => {
+    async jwt({ token, user, account }) {
+      // Initial sign in
+      if (account && user) {
+        if (account.provider === 'spotify') {
+          // Store Spotify tokens and user ID
+          token.spotifyId = user.spotifyId || account.providerAccountId;
+          token.accessToken = account.access_token;
+          token.refreshToken = account.refresh_token;
+          token.expiresAt = account.expires_at;
+          
+          // Check if user exists in Supabase or create them
+          let userProfile = await getUserBySpotifyId(account.providerAccountId);
+          
+          if (!userProfile) {
+            userProfile = await createOrUpdateUser({ 
+              spotifyId: account.providerAccountId,
+              displayName: user.name || account.providerAccountId,
+            });
+          }
+          
+          // Store FID if it exists for this Spotify account
+          token.fid = userProfile.fid;
+          
+          // Check if accounts are linked
+          token.isLinked = Boolean(userProfile.fid && userProfile.spotify_id);
+        } else if (user.fid) {
+          // Farcaster login
+          token.fid = user.fid;
+          token.spotifyId = user.spotifyId;
+          
+          // Check if accounts are linked
+          token.isLinked = Boolean(user.fid && user.spotifyId);
+        }
+      }
+      
+      return token;
+    },
+    async session({ session, token }) {
       if (session?.user) {
-        session.user.fid = parseInt(token.sub ?? '');
+        session.user.fid = token.fid as number | undefined;
+        session.user.spotifyId = token.spotifyId as string | undefined;
+        session.user.accessToken = token.accessToken as string | undefined;
+        session.user.refreshToken = token.refreshToken as string | undefined;
+        session.user.expiresAt = token.expiresAt as number | undefined;
+        session.user.isLinked = token.isLinked as boolean | undefined;
       }
       return session;
+    },
+    async signIn({ user, account }) {
+      // Always allow sign in
+      return true;
     },
   },
   cookies: {
@@ -101,7 +172,7 @@ export const authOptions: AuthOptions = {
       name: `next-auth.session-token`,
       options: {
         httpOnly: true,
-        sameSite: "none",
+        sameSite: "lax",
         path: "/",
         secure: true
       }
@@ -123,7 +194,13 @@ export const authOptions: AuthOptions = {
         secure: true
       }
     }
-  }
+  },
+  pages: {
+    signIn: '/auth/signin',
+  },
+  session: {
+    strategy: 'jwt',
+  },
 }
 
 export const getSession = async () => {
