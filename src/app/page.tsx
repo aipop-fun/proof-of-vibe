@@ -1,4 +1,3 @@
-/* eslint-disable  @typescript-eslint/no-unused-vars */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -15,7 +14,13 @@ export default function App() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {    
+  // Add debug logging for session state
+  useEffect(() => {
+    console.log("Session status:", status);
+    console.log("Session data:", session);
+  }, [session, status]);
+
+  useEffect(() => {
     const timer = setTimeout(() => {
       setIsLoading(false);
     }, 1000);
@@ -25,6 +30,7 @@ export default function App() {
   // Redirect to sign-in page if not authenticated
   useEffect(() => {
     if (!isLoading && status === 'unauthenticated') {
+      console.log("Redirecting to sign-in page because status is:", status);
       router.push('/auth/signin');
     }
   }, [isLoading, status, router]);
@@ -34,7 +40,7 @@ export default function App() {
       <div className="flex items-center justify-center h-screen bg-gradient-to-b from-purple-900 to-black text-white">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4">Proof of Vibes</h1>
-          <p className="animate-pulse">Loading...</p>
+          <p className="animate-pulse">Loading... (Status: {status})</p>
         </div>
       </div>
     );
@@ -47,7 +53,7 @@ export default function App() {
         <div className="text-center max-w-md w-full">
           <h1 className="text-3xl font-bold mb-6">Proof of Vibes</h1>
           <p className="mb-8">Connect your Spotify and Farcaster accounts to share your music with friends on Farcaster.</p>
-          <Button 
+          <Button
             onClick={() => router.push('/auth/signin')}
             className="w-full bg-purple-600 hover:bg-purple-700 py-3"
           >
@@ -57,6 +63,9 @@ export default function App() {
       </div>
     );
   }
+
+  // Add debug for authenticated state
+  console.log("Rendering Dashboard with session:", session);
 
   return (
     <div
