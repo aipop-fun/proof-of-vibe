@@ -10,16 +10,32 @@ import { Button } from "~/components/ui/Button";
 export function SignInWithFarcaster() {
     const [signingIn, setSigningIn] = useState(false);
     const [signInFailure, setSignInFailure] = useState("");
-    const [debugInfo, setDebugInfo] = useState(null);
+    const [isSDKReady, setIsSDKReady] = useState(false);
+
+    // Check if the SDK is available
+    useState(() => {
+        // Use a small delay to ensure SDK is properly initialized
+        const timer = setTimeout(() => {
+            const sdkAvailable = !!(sdk && typeof sdk.actions?.signIn === 'function');
+            setIsSDKReady(sdkAvailable);
+            if (!sdkAvailable) {
+                console.warn("Farcaster SDK not available or not properly initialized");
+            }
+        }, 1000);
+
+        return () => clearTimeout(timer);
+    });
 
     const getNonce = useCallback(async () => {
         try {
             const nonce = await getCsrfToken();
-            if (!nonce) throw new Error("Unable to generate nonce");
+            if (!nonce) {
+                console.error("Failed to get CSRF token for authentication");
+                throw new Error("Unable to generate authentication token");
+            }
             return nonce;
         } catch (error) {
             console.error("Error getting CSRF token:", error);
-            setSignInFailure("Failed to get authentication token");
             throw error;
         }
     }, []);
@@ -28,138 +44,71 @@ export function SignInWithFarcaster() {
         try {
             setSigningIn(true);
             setSignInFailure("");
-            setDebugInfo(null);
 
-            const nonce = await getNonce();
-            console.log("Got nonce:", nonce);
-
-            // Check if SDK is properly initialized
-            if (!sdk || !sdk.actions || typeof sdk.actions.signIn !== 'function') {
-                setSignInFailure("Farcaster SDK not properly initialized");
-                console.error("SDK not initialized correctly:", sdk);
+            // Verify SDK is available
+            if (!isSDKReady) {
+                setSignInFailure("Farcaster login is not available at the moment. Please try again later.");
+                console.error("SDK not properly initialized for sign-in attempt");
                 return;
             }
 
-            // This is specifically addressing the "Cannot read properties of undefined (reading 'result')" error
-            // Call signIn through a modified approach to handle the specific error you're encountering
-            try {
-                // Direct call, avoiding the destructuring that might be causing issues
-                const signInResponse = await sdk.actions.signIn({ nonce });
-                console.log("Raw sign-in response:", signInResponse);
+            console.log("Starting Farcaster sign-in process");
+            const nonce = await getNonce();
+            console.log("Got authentication nonce, proceeding with sign-in");
 
-                // Try to access data in different ways based on the response structure
-                let message, signature;
+            // Try to sign in with Farcaster
+            const result = await sdk.actions.signIn({ nonce });
+            console.log("Sign-in response received:", result);
 
-                if (signInResponse && typeof signInResponse === 'object') {
-                    // Try different property paths that might exist
-                    if (signInResponse.message && signInResponse.signature) {
-                        // Standard path
-                        message = signInResponse.message;
-                        signature = signInResponse.signature;
-                        // @ts-expect-error
-                    } else if (signInResponse.result && signInResponse.result.message && signInResponse.result.signature) {
-                        // Nested result object path
-                        // @ts-expect-error
-                        message = signInResponse.result.message;
-                        // @ts-expect-error
-                        signature = signInResponse.result.signature;
-                        // @ts-expect-error
-                    } else if (signInResponse.data && signInResponse.data.message && signInResponse.data.signature) {
-                        // Nested data object path
-                        // @ts-expect-error
-                        message = signInResponse.data.message;
-                        // @ts-expect-error
-                        signature = signInResponse.data.signature;
-                    }
-                }
-
-                // Debug logging
-                setDebugInfo({
-                    // @ts-expect-error
-                    rawResponse: signInResponse,
-                    extractedMessage: message,
-                    extractedSignature: signature,
-                });
-
-                // If we couldn't extract the needed data, throw an error
-                if (!message || !signature) {
-                    throw new Error("Could not extract message and signature from sign-in response");
-                }
-
-                // Proceed with NextAuth signIn using the extracted data
-                const authResult = await signIn("credentials", {
-                    message: message,
-                    signature: signature,
-                    redirect: false,
-                });
-
-                if (authResult?.error) {
-                    setSignInFailure(`Authentication failed: ${authResult.error}`);
-                }
-            } catch (sdkError) {
-                console.error("SDK signIn error:", sdkError);
-                if (sdkError instanceof SignInCore.RejectedByUser) {
-                    setSignInFailure("Sign-in rejected by user");
-                } else {
-                    // @ts-expect-error
-                    setSignInFailure(`SDK Error: ${sdkError.message || "Unknown SDK error"}`);
-                }
+            if (!result || !result.message || !result.signature) {
+                throw new Error("Invalid response from Farcaster sign-in");
             }
-        } catch (e) {
-            console.error("General signin error:", e);
-            // @ts-expect-error
-            setSignInFailure(`Error: ${e.message || "Unknown error"}`);
-        } finally {
-            setSigningIn(false);
-        }
-    }, [getNonce]);
 
-    // For debugging in development only
-    const mockSignIn = useCallback(async () => {
-        try {
-            setSigningIn(true);
-            // Simulate a successful sign-in with NextAuth directly
-            await signIn("credentials", {
-                message: "mock_message",
-                signature: "mock_signature",
+            // Complete the authentication with NextAuth
+            const authResult = await signIn("credentials", {
+                message: result.message,
+                signature: result.signature,
                 redirect: false,
             });
-        } catch (e) {
-            console.error("Mock sign-in error:", e);
-            setSignInFailure("Mock sign-in failed");
+
+            if (authResult?.error) {
+                console.error("NextAuth sign-in failed:", authResult.error);
+                setSignInFailure(`Authentication failed: ${authResult.error}`);
+            } else {
+                console.log("Sign-in successful");
+            }
+        } catch (error) {
+            console.error("Sign-in error:", error);
+
+            // Handle specific error types
+            if (error instanceof SignInCore.RejectedByUser) {
+                setSignInFailure("Sign-in was rejected");
+            } else if (error instanceof Error) {
+                setSignInFailure(`Error: ${error.message}`);
+            } else {
+                setSignInFailure("An unknown error occurred during sign-in");
+            }
         } finally {
             setSigningIn(false);
         }
-    }, []);
+    }, [getNonce, isSDKReady]);
 
     return (
         <div className="flex flex-col items-center">
             <Button
                 onClick={handleSignIn}
-                disabled={signingIn}
+                disabled={signingIn || !isSDKReady}
                 className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-full font-medium"
             >
-                {signingIn ? "Signing in..." : "Sign in with Farcaster"}
+                {signingIn
+                    ? "Signing in..."
+                    : !isSDKReady
+                        ? "Farcaster Login Initializing..."
+                        : "Sign in with Farcaster"}
             </Button>
-
-            {process.env.NODE_ENV === 'development' && (
-                <Button
-                    onClick={mockSignIn}
-                    disabled={signingIn}
-                    className="mt-2 bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-full font-medium text-sm"
-                >
-                    DEV: Mock Sign-in
-                </Button>
-            )}
 
             {signInFailure && (
                 <p className="mt-4 text-red-400 text-sm">{signInFailure}</p>
-            )}
-
-            {debugInfo && process.env.NODE_ENV === 'development' && (
-                <div className="mt-4 p-2 bg-gray-800 rounded-lg text-xs text-gray-300 font-mono">
-                    <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
-                </div>
             )}
         </div>
     );

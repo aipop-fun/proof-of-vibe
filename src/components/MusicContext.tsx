@@ -2,7 +2,6 @@
 // @ts-nocheck
 "use client";
 
-
 import {
     createContext,
     useContext,
@@ -11,10 +10,10 @@ import {
     ReactNode
 } from "react";
 import { useSession, signIn } from "next-auth/react";
-import spotifyApi from "~/lib/spotify-sdk";
+import spotifyApi, { callSpotifyAPI } from "~/lib/spotify-sdk";
 import { mockFriendData } from "../app/data/mockData";
 
-// Definições de tipos para os dados de música e contexto
+// Type definitions for music data and context
 export interface TrackData {
     type: string;
     id: string;
@@ -60,7 +59,7 @@ export interface MusicContextType {
     refreshData: () => void;
 }
 
-// Criar um valor de contexto padrão
+// Default context value
 const defaultContextValue: MusicContextType = {
     friendsListening: [],
     topWeeklyTracks: [],
@@ -72,10 +71,19 @@ const defaultContextValue: MusicContextType = {
     refreshData: () => { }
 };
 
-// Criar contexto com tipo explícito e valor padrão
+// Create context with explicit type and default value
 const MusicContext = createContext<MusicContextType>(defaultContextValue);
 
-// Componente Provider com tipo de children explícito
+// Helper function to format duration from ms to mm:ss
+const formatDuration = (ms: number): string => {
+    if (!ms) return '0:00';
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
+// Provider component with explicit children type
 export function MusicProvider({ children }: { children: ReactNode }) {
     const { data: session, status } = useSession();
     const [friendsListening, setFriendsListening] = useState<FriendListeningData[]>([]);
@@ -88,8 +96,9 @@ export function MusicProvider({ children }: { children: ReactNode }) {
         personal: true,
     });
     const [error, setError] = useState<string | null>(null);
+    const [retryCount, setRetryCount] = useState(0);
 
-    // Carregar dados pessoais do Spotify se conectado
+    // Load personal Spotify data when authenticated
     useEffect(() => {
         const loadPersonalSpotifyData = async () => {
             if (status !== 'authenticated' || !session?.user?.spotifyId) {
@@ -98,39 +107,51 @@ export function MusicProvider({ children }: { children: ReactNode }) {
             }
 
             setLoadingState(prev => ({ ...prev, personal: true }));
+            setError(null);
 
             try {
-                // Verificar se há erro de token
+                // Check for session error
                 if (session.error === "RefreshAccessTokenError") {
                     throw new Error("Failed to refresh access token. Please sign in again.");
                 }
 
-                // Obter faixa atualmente em reprodução usando o SDK
-                try {
-                    const currentlyPlaying = await spotifyApi.player.getCurrentlyPlayingTrack();
-
-                    if (currentlyPlaying && currentlyPlaying.item && 'name' in currentlyPlaying.item) {
-                        setPersonalCurrentTrack({
-                            type: 'track',
-                            id: currentlyPlaying.item.id,
-                            title: currentlyPlaying.item.name,
-                            artist: currentlyPlaying.item.artists.map(a => a.name).join(', '),
-                            album: currentlyPlaying.item.album?.name,
-                            coverArt: currentlyPlaying.item.album?.images[0]?.url,
-                            currentTime: formatDuration(currentlyPlaying.progress_ms ?? 0),
-                            duration: formatDuration(currentlyPlaying.item.duration_ms),
-                        });
-                    } else {
-                        setPersonalCurrentTrack(null);
+                // Get currently playing track
+                const currentlyPlaying = await callSpotifyAPI(async () => {
+                    try {
+                        return await spotifyApi.player.getCurrentlyPlayingTrack();
+                    } catch (err) {
+                        console.error("Error fetching currently playing track:", err);
+                        return null;
                     }
-                } catch (err) {
-                    console.error("Error fetching currently playing track:", err);
+                });
+
+                // Format currently playing track data if available
+                if (currentlyPlaying && currentlyPlaying.item && 'name' in currentlyPlaying.item) {
+                    setPersonalCurrentTrack({
+                        type: 'track',
+                        id: currentlyPlaying.item.id,
+                        title: currentlyPlaying.item.name,
+                        artist: currentlyPlaying.item.artists.map(a => a.name).join(', '),
+                        album: currentlyPlaying.item.album?.name,
+                        coverArt: currentlyPlaying.item.album?.images[0]?.url,
+                        currentTime: formatDuration(currentlyPlaying.progress_ms ?? 0),
+                        duration: formatDuration(currentlyPlaying.item.duration_ms),
+                    });
+                } else {
                     setPersonalCurrentTrack(null);
                 }
 
-                // Obter top tracks usando o SDK
-                const topTracksResponse = await spotifyApi.currentUser.topItems('tracks', 'medium_term', 50);
+                // Get top tracks
+                const topTracksResponse = await callSpotifyAPI(async () => {
+                    try {
+                        return await spotifyApi.currentUser.topItems('tracks', 'medium_term', 50);
+                    } catch (err) {
+                        console.error("Error fetching top tracks:", err);
+                        throw err;
+                    }
+                });
 
+                // Format top tracks data if available
                 if (topTracksResponse && topTracksResponse.items) {
                     const formattedTopTracks = topTracksResponse.items.map(track => ({
                         id: track.id,
@@ -144,23 +165,47 @@ export function MusicProvider({ children }: { children: ReactNode }) {
 
                     setPersonalTopTracks(formattedTopTracks);
                 }
+
+                // Reset retry count on success
+                setRetryCount(0);
             } catch (err) {
                 console.error("Error fetching Spotify data:", err);
-                setError(err instanceof Error ? err.message : "Failed to load Spotify data");
+
+                // Handle specific error types
+                if (err instanceof Error) {
+                    if (err.message.includes("access token")) {
+                        setError("Spotify authentication error. Please try signing in again.");
+                    } else if (err.message.includes("rate limit")) {
+                        setError("Spotify API rate limit reached. Please try again later.");
+                    } else {
+                        setError(`Failed to load Spotify data: ${err.message}`);
+                    }
+                } else {
+                    setError("An unknown error occurred while loading Spotify data");
+                }
+
+                // Implement exponential backoff for retries (max 3 attempts)
+                if (retryCount < 3) {
+                    const retryDelay = Math.pow(2, retryCount) * 1000; // Exponential backoff
+                    console.log(`Retrying Spotify data fetch in ${retryDelay}ms (attempt ${retryCount + 1}/3)`);
+
+                    setTimeout(() => {
+                        setRetryCount(prev => prev + 1);
+                    }, retryDelay);
+                }
             } finally {
                 setLoadingState(prev => ({ ...prev, personal: false }));
             }
         };
 
         loadPersonalSpotifyData();
-    }, [session, status]);
+    }, [session, status, retryCount]);
 
-    // Carregar dados de amigos
+    // Load mock friend data (would be real data in production)
     useEffect(() => {
         const fetchFriendData = async () => {
             try {
-                // Para o MVP, use dados simulados
-                // Em produção, isso buscaria dados do Supabase ou outro backend
+                // Use timeout to simulate network request
                 setTimeout(() => {
                     setFriendsListening(mockFriendData.currentlyListening);
                     setLoadingState(prev => ({ ...prev, friends: false }));
@@ -172,7 +217,13 @@ export function MusicProvider({ children }: { children: ReactNode }) {
                 }, 1500);
             } catch (err) {
                 console.error("Error fetching music data:", err);
-                setError(err instanceof Error ? err.message : "Failed to load music data");
+
+                if (err instanceof Error) {
+                    setError(`Failed to load friend music data: ${err.message}`);
+                } else {
+                    setError("An unknown error occurred while loading friend music data");
+                }
+
                 setLoadingState({ friends: false, weekly: false, personal: false });
             }
         };
@@ -180,37 +231,38 @@ export function MusicProvider({ children }: { children: ReactNode }) {
         fetchFriendData();
     }, []);
 
-    // Função auxiliar para formatar duração de ms para mm:ss
-    const formatDuration = (ms: number): string => {
-        if (!ms) return '0:00';
-        const totalSeconds = Math.floor(ms / 1000);
-        const minutes = Math.floor(totalSeconds / 60);
-        const seconds = totalSeconds % 60;
-        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    };
-
-    // Função para conectar Spotify
+    // Function to connect Spotify
     const connectSpotify = async () => {
-        await signIn('spotify', { callbackUrl: '/' });
+        try {
+            await signIn('spotify', { callbackUrl: '/' });
+        } catch (error) {
+            console.error("Error connecting to Spotify:", error);
+            setError("Failed to connect to Spotify. Please try again.");
+        }
     };
 
-    // Função para atualizar dados
+    // Function to refresh data
     const refreshData = () => {
         setLoadingState({ friends: true, weekly: true, personal: true });
+        setError(null);
 
-        // Atualizar dados simulados de amigos
+        // Refresh mock friend data
         setTimeout(() => {
-            // Embaralhar os dados para simular atualização
+            // Shuffle data to simulate an update
             setFriendsListening([...mockFriendData.currentlyListening].sort(() => Math.random() - 0.5));
             setTopWeeklyTracks([...mockFriendData.topWeeklyTracks].sort(() => Math.random() - 0.5));
             setLoadingState(prev => ({ ...prev, friends: false, weekly: false }));
         }, 1000);
 
-        // Atualizar dados pessoais do Spotify se conectado
+        // Refresh personal Spotify data
         if (session?.user?.spotifyId) {
-            try {
-                // Obter faixa atual
-                spotifyApi.player.getCurrentlyPlayingTrack().then(currentTrack => {
+            setLoadingState(prev => ({ ...prev, personal: true }));
+
+            // Get current track
+            callSpotifyAPI(async () => {
+                try {
+                    const currentTrack = await spotifyApi.player.getCurrentlyPlayingTrack();
+
                     if (currentTrack && currentTrack.item && 'name' in currentTrack.item) {
                         setPersonalCurrentTrack({
                             id: currentTrack.item.id,
@@ -225,12 +277,10 @@ export function MusicProvider({ children }: { children: ReactNode }) {
                     } else {
                         setPersonalCurrentTrack(null);
                     }
-                }).catch(error => {
-                    console.error('Error refreshing current track:', error);
-                });
 
-                // Obter top tracks
-                spotifyApi.currentUser.topItems('tracks', 'medium_term', 50).then(topTracks => {
+                    // Get top tracks
+                    const topTracks = await spotifyApi.currentUser.topItems('tracks', 'medium_term', 50);
+
                     if (topTracks && topTracks.items) {
                         const formattedTopTracks = topTracks.items.map(track => ({
                             id: track.id,
@@ -244,21 +294,24 @@ export function MusicProvider({ children }: { children: ReactNode }) {
 
                         setPersonalTopTracks(formattedTopTracks);
                     }
-                }).catch(error => {
-                    console.error('Error refreshing top tracks:', error);
-                }).finally(() => {
+                } catch (error) {
+                    console.error('Error refreshing Spotify data:', error);
+
+                    if (error instanceof Error) {
+                        setError(`Failed to refresh Spotify data: ${error.message}`);
+                    } else {
+                        setError("An unknown error occurred while refreshing Spotify data");
+                    }
+                } finally {
                     setLoadingState(prev => ({ ...prev, personal: false }));
-                });
-            } catch (error) {
-                console.error('Error refreshing Spotify data:', error);
-                setLoadingState(prev => ({ ...prev, personal: false }));
-            }
+                }
+            });
         } else {
             setLoadingState(prev => ({ ...prev, personal: false }));
         }
     };
 
-    // Fornecer valor do contexto
+    // Provide context value
     const contextValue: MusicContextType = {
         friendsListening,
         topWeeklyTracks,
@@ -277,11 +330,11 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     );
 }
 
-// Hook personalizado para usar o contexto de música com segurança de tipo
+// Custom hook to use the music context with type safety
 export const useMusic = (): MusicContextType => {
     const context = useContext(MusicContext);
 
-    // Lançar um erro se o hook for usado fora de um provider
+    // Throw error if hook is used outside of a provider
     if (context === undefined) {
         throw new Error('useMusic must be used within a MusicProvider');
     }

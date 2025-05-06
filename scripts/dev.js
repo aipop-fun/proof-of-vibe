@@ -4,6 +4,7 @@ import { createServer } from 'net';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 
 // Load environment variables
 dotenv.config({ path: '.env.local' });
@@ -14,6 +15,17 @@ const projectRoot = path.resolve(path.normalize(path.join(__dirname, '..')));
 let tunnel;
 let nextDev;
 let isCleaningUp = false;
+
+function generateRandomString(length = 32) {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+const nextAuthSecret = process.env.NEXTAUTH_SECRET || generateRandomString(32);
 
 async function checkPort(port) {
   return new Promise((resolve) => {
@@ -82,7 +94,10 @@ async function startDev() {
     process.exit(1);
   }
 
-  const useTunnel = process.env.USE_TUNNEL === 'true';
+  //const useTunnel = process.env.USE_TUNNELù === 'true';
+  const useTunnel = 'false'
+  console.log('use Tunnel', useTunnel);
+  console.log('use Tunnel', process.env.USE_TUNNEL);
   let frameUrl;
 
   if (useTunnel) {
@@ -128,6 +143,14 @@ async function startDev() {
    4. Click "Preview" to test your frame (note that it may take ~5 seconds to load the first time)
 `);
   }
+
+  const envObj = {
+    ...process.env,
+    NEXT_PUBLIC_URL: frameUrl,
+    NEXTAUTH_URL: frameUrl,
+    NEXTAUTH_SECRET: nextAuthSecret,
+    AUTH_SECRET: nextAuthSecret, 
+  };
   
   // Start next dev with appropriate configuration
   const nextBin = process.platform === 'win32' 
@@ -136,7 +159,10 @@ async function startDev() {
 
   nextDev = spawn(nextBin, ['dev'], {
     stdio: 'inherit',
-    env: { ...process.env, NEXT_PUBLIC_URL: frameUrl, NEXTAUTH_URL: frameUrl },
+    env: {
+      ...process.env, NEXT_PUBLIC_URL: frameUrl, NEXTAUTH_URL: frameUrl, NEXTAUTH_SECRET: envObj.NEXTAUTH_SECRET ? "[SET]" : "[NOT SET]",
+      SPOTIFY_CLIENT_ID: envObj.SPOTIFY_CLIENT_ID ? "[SET]" : "[NOT SET]",
+      SPOTIFY_CLIENT_SECRET: envObj.SPOTIFY_CLIENT_SECRET ? "[SET]" : "[NOT SET]", },
     cwd: projectRoot
   });
 
