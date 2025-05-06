@@ -2,18 +2,24 @@
 
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { signIn, getCsrfToken } from "next-auth/react";
 import sdk, { SignIn as SignInCore } from "@farcaster/frame-sdk";
 import { Button } from "~/components/ui/Button";
+import { useAuthStore } from "~/lib/stores/authStore";
+import { useRouter } from "next/navigation";
 
 export function SignInWithFarcaster() {
     const [signingIn, setSigningIn] = useState(false);
     const [signInFailure, setSignInFailure] = useState("");
     const [isSDKReady, setIsSDKReady] = useState(false);
+    const router = useRouter();
+
+    // Use our Zustand store
+    const { setFarcasterAuth } = useAuthStore();
 
     // Check if the SDK is available
-    useState(() => {
+    useEffect(() => {
         // Use a small delay to ensure SDK is properly initialized
         const timer = setTimeout(() => {
             const sdkAvailable = !!(sdk && typeof sdk.actions?.signIn === 'function');
@@ -24,7 +30,7 @@ export function SignInWithFarcaster() {
         }, 1000);
 
         return () => clearTimeout(timer);
-    });
+    }, []);
 
     const getNonce = useCallback(async () => {
         try {
@@ -64,7 +70,27 @@ export function SignInWithFarcaster() {
                 throw new Error("Invalid response from Farcaster sign-in");
             }
 
-            // Complete the authentication with NextAuth
+            // Extract FID from message
+            let fid = 0;
+            try {
+                const messageObj = JSON.parse(result.message);
+                fid = messageObj.fid || messageObj.message?.fid || 0;
+
+                if (!fid) {
+                    throw new Error("No FID found in message");
+                }
+
+                console.log("Extracted FID:", fid);
+            } catch (error) {
+                console.error("Error parsing Farcaster message:", error);
+                throw new Error("Could not parse Farcaster authentication data");
+            }
+
+            // Store FID in Zustand
+            setFarcasterAuth({ fid });
+            console.log("Stored FID in Zustand:", fid);
+
+            // Complete the authentication with NextAuth for session consistency
             const authResult = await signIn("credentials", {
                 message: result.message,
                 signature: result.signature,
@@ -76,6 +102,8 @@ export function SignInWithFarcaster() {
                 setSignInFailure(`Authentication failed: ${authResult.error}`);
             } else {
                 console.log("Sign-in successful");
+                // Redirect to home page
+                router.push('/');
             }
         } catch (error) {
             console.error("Sign-in error:", error);
@@ -91,7 +119,7 @@ export function SignInWithFarcaster() {
         } finally {
             setSigningIn(false);
         }
-    }, [getNonce, isSDKReady]);
+    }, [getNonce, isSDKReady, setFarcasterAuth, router]);
 
     return (
         <div className="flex flex-col items-center">

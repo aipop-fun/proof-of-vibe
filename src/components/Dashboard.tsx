@@ -1,10 +1,11 @@
+// src/components/Dashboard.tsx
 /* eslint-disable  @typescript-eslint/no-unused-vars, @typescript-eslint/ban-ts-comment */
 
 //@ts-nocheck
 "use client";
 
 import { useState } from "react";
-import { signOut, useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { useMusic } from "./MusicContext";
 import { FriendsListening } from "./FriendsListening";
 import { TopWeeklyTracks } from "./TopWeeklyTracks";
@@ -12,6 +13,7 @@ import { Button } from "~/components/ui/Button";
 import sdk from "@farcaster/frame-sdk";
 import { AccountLinking } from "./AccountLinking";
 import { PersonalMusic } from "./PersonalMusic";
+import { useAuthStore } from "~/lib/stores/authStore";
 
 export function Dashboard() {
   // Use default values from MusicContext to ensure type safety
@@ -26,8 +28,24 @@ export function Dashboard() {
   const [tab, setTab] = useState<"current" | "weekly">("current");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Use Zustand store
+  const {
+    spotifyId,
+    spotifyUser,
+    fid,
+    clearAuth,
+    isAuthenticated
+  } = useAuthStore();
+
   const handleSignOut = async () => {
-    await signOut({ redirect: false });
+    // Clear the Zustand store
+    clearAuth();
+    // Also sign out from NextAuth if session exists
+    if (session) {
+      await signOut({ redirect: false });
+    }
+    // Redirect to sign-in page
+    window.location.href = '/auth/signin';
   };
 
   const handleShare = () => {
@@ -58,11 +76,18 @@ export function Dashboard() {
     </button>
   );
 
-  // Safely extract user information with fallbacks
-  const userFid = session?.user?.fid ? String(session.user.fid) : "";
-  const userName = session?.user?.name || "Vibe Friend";
-  const spotifyId = session?.user?.spotifyId;
-  const isLinked = session?.user?.isLinked;
+  // Safely extract user information with fallbacks using Zustand
+  const userName = spotifyUser?.name || "Vibe Friend";
+  const fidString = fid ? String(fid) : "";
+
+  // Display debugging info in development
+  const debugAuthInfo = process.env.NODE_ENV === 'development' ? (
+    <div className="px-4 mb-2 text-xs text-gray-500">
+      <p>Auth Debug: {isAuthenticated ? 'Authenticated' : 'Not Authenticated'}</p>
+      <p>Spotify ID: {spotifyId || 'None'}</p>
+      <p>FID: {fidString || 'None'}</p>
+    </div>
+  ) : null;
 
   return (
     <div className="flex flex-col min-h-screen w-full max-w-md mx-auto">
@@ -94,8 +119,8 @@ export function Dashboard() {
           <div className="ml-3">
             <p className="font-medium">{userName}</p>
             <div className="flex text-xs text-gray-300">
-              {userFid && (
-                <span className="mr-2">FID: {userFid}</span>
+              {fidString && (
+                <span className="mr-2">FID: {fidString}</span>
               )}
               {spotifyId && (
                 <span className="bg-green-800/50 px-1 rounded text-xs">Spotify Connected</span>
@@ -114,6 +139,9 @@ export function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Debug info (only in development) */}
+      {debugAuthInfo}
 
       {/* Account Linking Section */}
       <AccountLinking />

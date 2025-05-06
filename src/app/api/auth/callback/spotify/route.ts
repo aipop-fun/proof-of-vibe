@@ -1,3 +1,4 @@
+// src/app/api/auth/callback/spotify/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
@@ -84,48 +85,20 @@ export async function GET(request: NextRequest) {
         // Get the profile data
         const profileData = await profileResponse.json();
 
-        // Store user session data
-        // In a real app, you'd use a session store or JWT
-        // For simplicity, we'll use cookies
-        const response = NextResponse.redirect(new URL('/', request.url));
-
-        // Set session cookies (simplified)
-        response.cookies.set({
-            name: 'user-token',
-            value: tokenData.access_token,
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            path: '/',
-            maxAge: tokenData.expires_in
+        // Create URL with auth data to be processed client-side
+        const authParams = new URLSearchParams({
+            access_token: tokenData.access_token,
+            refresh_token: tokenData.refresh_token,
+            expires_in: tokenData.expires_in.toString(),
+            spotify_id: profileData.id,
+            display_name: profileData.display_name || '',
+            email: profileData.email || '',
+            image: profileData.images?.[0]?.url || '',
+            auth_success: 'true'
         });
 
-        response.cookies.set({
-            name: 'user-refresh-token',
-            value: tokenData.refresh_token,
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            path: '/',
-            maxAge: 30 * 24 * 60 * 60 // 30 days
-        });
-
-        response.cookies.set({
-            name: 'user-profile',
-            value: JSON.stringify({
-                id: profileData.id,
-                name: profileData.display_name,
-                email: profileData.email,
-                image: profileData.images?.[0]?.url
-            }),
-            httpOnly: false,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            path: '/',
-            maxAge: 30 * 24 * 60 * 60 // 30 days
-        });
-
-        return response;
+        // Redirect to a special auth handler page that will save the data to Zustand
+        return NextResponse.redirect(new URL(`/auth/handle-auth?${authParams.toString()}`, request.url));
     } catch (error) {
         console.error('Error in Spotify callback:', error);
         return NextResponse.redirect(

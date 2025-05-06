@@ -1,3 +1,4 @@
+/* eslint-disable  @typescript-eslint/no-unused-vars */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -7,6 +8,7 @@ import { Dashboard } from "~/components/Dashboard";
 import { MusicProvider } from "~/components/MusicContext";
 import { Button } from "~/components/ui/Button";
 import { useRouter } from "next/navigation";
+import { useAuthStore } from "~/lib/stores/authStore";
 
 export default function App() {
   const { isSDKLoaded, context } = useFrame();
@@ -14,11 +16,8 @@ export default function App() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
 
-  // Add debug logging for session state
-  useEffect(() => {
-    console.log("Session status:", status);
-    console.log("Session data:", session);
-  }, [session, status]);
+  // Use our Zustand auth store
+  const { isAuthenticated, isExpired, accessToken } = useAuthStore();
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -27,27 +26,37 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Redirect to sign-in page if not authenticated
+  // Debug logging
   useEffect(() => {
-    if (!isLoading && status === 'unauthenticated') {
-      console.log("Redirecting to sign-in page because status is:", status);
+    console.log("Auth status:", {
+      zustandAuth: isAuthenticated,
+      nextAuthStatus: status,
+      expired: isExpired() ? "yes" : "no",
+      hasAccessToken: !!accessToken
+    });
+  }, [isAuthenticated, status, isExpired, accessToken]);
+
+  // Redirect to sign-in page if not authenticated via Zustand
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      console.log("Not authenticated via Zustand, redirecting to sign-in");
       router.push('/auth/signin');
     }
-  }, [isLoading, status, router]);
+  }, [isLoading, isAuthenticated, router]);
 
-  if (isLoading || !isSDKLoaded || status === 'loading') {
+  if (isLoading || !isSDKLoaded) {
     return (
       <div className="flex items-center justify-center h-screen bg-gradient-to-b from-purple-900 to-black text-white">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4">Proof of Vibes</h1>
-          <p className="animate-pulse">Loading... (Status: {status})</p>
+          <p className="animate-pulse">Loading...</p>
         </div>
       </div>
     );
   }
 
-  // If not authenticated, show a button to go to sign-in page
-  if (status === 'unauthenticated') {
+  // If not authenticated via Zustand, show a button to go to sign-in page
+  if (!isAuthenticated) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-b from-purple-900 to-black text-white px-4">
         <div className="text-center max-w-md w-full">
@@ -64,9 +73,7 @@ export default function App() {
     );
   }
 
-  // Add debug for authenticated state
-  console.log("Rendering Dashboard with session:", session);
-
+  // If authenticated, show the dashboard
   return (
     <div
       className="flex flex-col min-h-screen bg-gradient-to-b from-purple-900 to-black text-white"

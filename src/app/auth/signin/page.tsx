@@ -2,15 +2,26 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "~/components/ui/Button";
 import { SignInWithFarcaster } from "~/components/SignInWithFarcaster";
+import { useAuthStore } from "~/lib/stores/authStore";
 
 export default function SignIn() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Use Zustand store
+  const { isAuthenticated } = useAuthStore();
+
+  // Redirect to home if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/');
+    }
+  }, [isAuthenticated, router]);
 
   const handleSpotifySignIn = () => {
     try {
