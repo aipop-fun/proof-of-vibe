@@ -29,6 +29,7 @@ interface SpotifyAuthState {
     } | null;
     isAuthenticated: boolean;
     fid?: number | null;
+    isLinked: boolean,
 
     // Music data
     currentlyPlaying: SpotifyTrack | null;
@@ -39,6 +40,7 @@ interface SpotifyAuthState {
     error: string | null;
 
     // Actions
+    setLinkedStatus: (status: boolean) => void;
     setSpotifyAuth: (data: {
         accessToken: string;
         refreshToken: string;
@@ -80,6 +82,7 @@ export const useAuthStore = create<SpotifyAuthState>()(
             spotifyUser: null,
             isAuthenticated: false,
             fid: null,
+            isLinked: false,
 
             // Music data
             currentlyPlaying: null,
@@ -95,6 +98,8 @@ export const useAuthStore = create<SpotifyAuthState>()(
             },
             loadingCurrentTrack: false,
             error: null,
+
+            setLinkedStatus: (status) => set({ isLinked: status }),
 
             setSpotifyAuth: (data) => {
                 set({
@@ -281,6 +286,7 @@ export const useAuthStore = create<SpotifyAuthState>()(
                 spotifyUser: state.spotifyUser,
                 isAuthenticated: state.isAuthenticated,
                 fid: state.fid,
+                isLinked: state.isLinked,
             }),
         }
     )

@@ -32,19 +32,44 @@ export async function POST(request: NextRequest) {
     console.log('Attempting to link accounts:', { fid, spotifyId });
 
     // Validate that we have both IDs
-    if (!fid) {
+    if (!Number.isInteger(fid)) {
       return NextResponse.json(
         { success: false, error: 'No Farcaster ID provided' },
         { status: 400 }
       );
     }
 
-    if (!spotifyId) {
+    if (typeof spotifyId !== 'string' || !spotifyId.startsWith('spotify:user:')) {
       return NextResponse.json(
         { success: false, error: 'No Spotify ID provided' },
         { status: 400 }
       );
     }
+
+
+    const existingFidUser = await getUserByFid(fid);
+    const existingSpotifyUser = await getUserBySpotifyId(spotifyId);
+
+    if (existingFidUser && existingFidUser.spotify_id && existingFidUser.spotify_id !== spotifyId) {
+      return NextResponse.json(
+        { success: false, error: 'FID already linked to another Spotify account' },
+        { status: 409 }
+      );
+    }
+
+    if (existingSpotifyUser && existingSpotifyUser.fid && existingSpotifyUser.fid !== fid) {
+      return NextResponse.json(
+        { success: false, error: 'Spotify account already linked to another FID' },
+        { status: 409 }
+      );
+    }
+
+    // atomic 
+    /*
+    const linkedUser = await supabase.rpc('link_accounts', {
+      p_fid: fid,
+      p_spotify_id: spotifyId
+    }); */
 
     // Link accounts in database
     const linkedUser = await linkAccounts(fid, spotifyId);

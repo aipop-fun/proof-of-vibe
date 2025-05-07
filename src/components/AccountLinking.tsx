@@ -28,7 +28,7 @@ export function AccountLinking() {
   const [isMiniApp, setIsMiniApp] = useState(false);
 
   // Use Zustand store
-  const { spotifyId, fid, isAuthenticated } = useAuthStore();
+  const { spotifyId, fid, isAuthenticated, setLinkedStatus } = useAuthStore();
 
   // Check if running in Farcaster mini app
   useEffect(() => {
