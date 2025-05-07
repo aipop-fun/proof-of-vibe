@@ -1,7 +1,11 @@
-/* eslint-disable react-hooks/exhaustive-deps, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/ban-ts-comment */
+//@ts-nocheck
+
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { checkAccountsLinked } from '~/lib/services/accountLinking';
 
+// Types for Spotify tracks
 interface SpotifyTrack {
     currentTime?: string;
     id: string;
@@ -16,7 +20,9 @@ interface SpotifyTrack {
 
 type TimeRange = 'short_term' | 'medium_term' | 'long_term';
 
-interface SpotifyAuthState {
+// Main auth store state interface
+interface AuthState {
+    // Auth state
     accessToken: string | null;
     refreshToken: string | null;
     expiresAt: number | null;
@@ -28,19 +34,23 @@ interface SpotifyAuthState {
         image?: string;
     } | null;
     isAuthenticated: boolean;
-    fid?: number | null;
-    isLinked: boolean,
+    fid: number | null;
+    isLinked: boolean;
+    linkingError: string | null;
 
     // Music data
     currentlyPlaying: SpotifyTrack | null;
     topTracks: Record<TimeRange, SpotifyTrack[]>;
     isLoadingTracks: Record<TimeRange, boolean>;
     loadingCurrentTrack: boolean;
-
     error: string | null;
 
-    // Actions
+    // Account linking actions
     setLinkedStatus: (status: boolean) => void;
+    checkLinkedStatus: () => Promise<void>;
+    setLinkingError: (error: string | null) => void;
+
+    // Auth actions
     setSpotifyAuth: (data: {
         accessToken: string;
         refreshToken: string;
@@ -52,17 +62,19 @@ interface SpotifyAuthState {
             email?: string;
             image?: string;
         };
-    }) => void;
-    setFarcasterAuth: (data: { fid: number }) => void;
+    }) => Promise<void>;
+    setFarcasterAuth: (data: { fid: number }) => Promise<void>;
     clearAuth: () => void;
     isExpired: () => boolean;
 
+    // Music data actions
     fetchTopTracks: (timeRange: TimeRange) => Promise<void>;
     fetchCurrentlyPlaying: () => Promise<void>;
     clearMusicData: () => void;
     setError: (error: string | null) => void;
 }
 
+// Helper function to format duration
 const formatDuration = (ms: number): string => {
     if (!ms) return '0:00';
     const totalSeconds = Math.floor(ms / 1000);
@@ -72,9 +84,10 @@ const formatDuration = (ms: number): string => {
 };
 
 // Create store with persistence
-export const useAuthStore = create<SpotifyAuthState>()(
+export const useAuthStore = create<AuthState>()(
     persist(
         (set, get) => ({
+            // Initial auth state
             accessToken: null,
             refreshToken: null,
             expiresAt: null,
@@ -83,8 +96,9 @@ export const useAuthStore = create<SpotifyAuthState>()(
             isAuthenticated: false,
             fid: null,
             isLinked: false,
+            linkingError: null,
 
-            // Music data
+            // Initial music data state
             currentlyPlaying: null,
             topTracks: {
                 short_term: [], // Weekly (approximately last 4 weeks)
@@ -99,9 +113,26 @@ export const useAuthStore = create<SpotifyAuthState>()(
             loadingCurrentTrack: false,
             error: null,
 
+            // Account linking actions
             setLinkedStatus: (status) => set({ isLinked: status }),
 
-            setSpotifyAuth: (data) => {
+            setLinkingError: (error) => set({ linkingError: error }),
+
+            // Check if accounts are linked in the database
+            checkLinkedStatus: async () => {
+                const state = get();
+                if (!state.fid && !state.spotifyId) return;
+
+                try {
+                    const isLinked = await checkAccountsLinked(state.fid || undefined, state.spotifyId || undefined);
+                    set({ isLinked });
+                } catch (error) {
+                    console.error('Error checking linked status:', error);
+                }
+            },
+
+            // Auth actions
+            setSpotifyAuth: async (data) => {
                 set({
                     accessToken: data.accessToken,
                     refreshToken: data.refreshToken,
@@ -110,13 +141,25 @@ export const useAuthStore = create<SpotifyAuthState>()(
                     spotifyUser: data.user || null,
                     isAuthenticated: true,
                 });
+
+                // Check if accounts are linked after setting Spotify auth
+                const state = get();
+                if (state.fid) {
+                    await get().checkLinkedStatus();
+                }
             },
 
-            setFarcasterAuth: (data) => {
+            setFarcasterAuth: async (data) => {
                 set((state) => ({
                     fid: data.fid,
                     isAuthenticated: true,
                 }));
+
+                // Check if accounts are linked after setting Farcaster auth
+                const state = get();
+                if (state.spotifyId) {
+                    await get().checkLinkedStatus();
+                }
             },
 
             clearAuth: () => {
@@ -128,6 +171,7 @@ export const useAuthStore = create<SpotifyAuthState>()(
                     spotifyUser: null,
                     isAuthenticated: false,
                     fid: null,
+                    isLinked: false,
                 });
             },
 
@@ -138,6 +182,7 @@ export const useAuthStore = create<SpotifyAuthState>()(
                 return Date.now() > (state.expiresAt * 1000) - (5 * 60 * 1000);
             },
 
+            // Music data actions
             fetchTopTracks: async (timeRange) => {
                 const state = get();
 
@@ -157,7 +202,7 @@ export const useAuthStore = create<SpotifyAuthState>()(
                 }));
 
                 try {
-                    // Real API call to Spotify
+                    // API call to Spotify
                     const response = await fetch(`https://api.spotify.com/v1/me/top/tracks?time_range=${timeRange}&limit=50`, {
                         headers: {
                             'Authorization': `Bearer ${state.accessToken}`
@@ -169,10 +214,10 @@ export const useAuthStore = create<SpotifyAuthState>()(
                     }
 
                     const data = await response.json();
-                    const tracks = data.items.map((item: { id: any; name: any; artists: { name: any; }[]; album: { name: any; images: { url: any; }[]; }; duration_ms: number; popularity: any; }) => ({
+                    const tracks = data.items.map((item: any) => ({
                         id: item.id,
                         title: item.name,
-                        artist: item.artists.map((artist: { name: any; }) => artist.name).join(', '),
+                        artist: item.artists.map((artist: any) => artist.name).join(', '),
                         album: item.album.name,
                         coverArt: item.album.images[0]?.url || '/api/placeholder/60/60',
                         duration: formatDuration(item.duration_ms),
@@ -216,7 +261,7 @@ export const useAuthStore = create<SpotifyAuthState>()(
                 set({ loadingCurrentTrack: true, error: null });
 
                 try {
-                    // Real API call to Spotify
+                    // API call to Spotify
                     const response = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
                         headers: {
                             'Authorization': `Bearer ${state.accessToken}`
@@ -244,7 +289,7 @@ export const useAuthStore = create<SpotifyAuthState>()(
                     const currentTrack = {
                         id: data.item.id,
                         title: data.item.name,
-                        artist: data.item.artists.map((artist: { name: any; }) => artist.name).join(', '),
+                        artist: data.item.artists.map((artist: any) => artist.name).join(', '),
                         album: data.item.album.name,
                         coverArt: data.item.album.images[0]?.url || '/api/placeholder/60/60',
                         duration: formatDuration(data.item.duration_ms),
@@ -286,7 +331,7 @@ export const useAuthStore = create<SpotifyAuthState>()(
                 spotifyUser: state.spotifyUser,
                 isAuthenticated: state.isAuthenticated,
                 fid: state.fid,
-                isLinked: state.isLinked,
+                isLinked: state.isLinked
             }),
         }
     )

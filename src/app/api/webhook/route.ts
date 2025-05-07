@@ -1,3 +1,4 @@
+// src/app/api/webhook/route.ts
 import {
   ParseWebhookEvent,
   parseWebhookEvent,
@@ -10,16 +11,15 @@ import {
 } from "~/lib/kv";
 import { sendFrameNotification } from "~/lib/notifs";
 
+/**
+ * Webhook handler for Farcaster Mini App events
+ * This processes events like frame_added, frame_removed, notifications_enabled, and notifications_disabled
+ */
 export async function POST(request: NextRequest) {
-  // If Neynar is enabled, we don't need to handle webhooks here
-  // as they will be handled by Neynar's webhook endpoint
-  const neynarEnabled = process.env.NEYNAR_API_KEY && process.env.NEYNAR_CLIENT_ID;
-  if (neynarEnabled) {
-    return Response.json({ success: true });
-  }
-
+  // Parse the request body
   const requestJson = await request.json();
 
+  // Verify the event is legitimate and extract the data
   let data;
   try {
     data = await parseWebhookEvent(requestJson, verifyAppKeyWithNeynar);
@@ -49,42 +49,53 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Extract the FID and event from the verified data
   const fid = data.fid;
   const event = data.event;
 
-  // Only handle notifications if Neynar is not enabled
-  // When Neynar is enabled, notifications are handled through their webhook
+  // Process different event types
   switch (event.event) {
     case "frame_added":
+      // The user has added the Mini App
       if (event.notificationDetails) {
+        // Store the notification details for this user
         await setUserNotificationDetails(fid, event.notificationDetails);
+
+        // Send a welcome notification
         await sendFrameNotification({
           fid,
-          title: "Welcome to Frames v2",
-          body: "Frame is now added to your client",
+          title: "Welcome to Proof of Vibes!",
+          body: "Your music journey just got more social. Connect Spotify to get started.",
         });
       } else {
+        // If no notification details, make sure we don't have any stored
         await deleteUserNotificationDetails(fid);
       }
       break;
 
     case "frame_removed":
+      // The user has removed the Mini App - clean up notification details
       await deleteUserNotificationDetails(fid);
       break;
 
     case "notifications_enabled":
+      // The user has enabled notifications
       await setUserNotificationDetails(fid, event.notificationDetails);
+
+      // Send a confirmation notification
       await sendFrameNotification({
         fid,
-        title: "Ding ding ding",
-        body: "Notifications are now enabled",
+        title: "Notifications Enabled",
+        body: "You'll now receive updates when friends share music or interact with yours!",
       });
       break;
 
     case "notifications_disabled":
+      // The user has disabled notifications - clean up notification details
       await deleteUserNotificationDetails(fid);
       break;
   }
 
+  // Return success response
   return Response.json({ success: true });
 }

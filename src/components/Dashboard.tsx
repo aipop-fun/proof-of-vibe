@@ -2,6 +2,7 @@
 /* eslint-disable  @typescript-eslint/no-unused-vars, @typescript-eslint/ban-ts-comment */
 
 //@ts-nocheck
+// src/components/Dashboard.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -11,7 +12,9 @@ import { FriendsListening } from "./FriendsListening";
 import { TopWeeklyTracks } from "./TopWeeklyTracks";
 import { Button } from "~/components/ui/Button";
 import sdk from "@farcaster/frame-sdk";
+import { AccountOnboarding } from "./AccountOnboarding"; // Import the new onboarding component
 import { AccountLinking } from "./AccountLinking";
+import { AccountStatus } from "./AccountStatus"; // Import the status component
 import { PersonalMusic } from "./PersonalMusic";
 import { useAuthStore } from "~/lib/stores/authStore";
 import { useFrame } from "./providers/FrameProvider";
@@ -27,6 +30,7 @@ export function Dashboard() {
   const { data: session } = useSession();
   const [tab, setTab] = useState<"current" | "weekly">("current");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showAccountSetup, setShowAccountSetup] = useState(false);
 
   // Get context from FrameProvider
   const { isMiniApp, context } = useFrame();
@@ -37,8 +41,18 @@ export function Dashboard() {
     spotifyUser,
     fid,
     clearAuth,
-    isAuthenticated
+    isAuthenticated,
+    isLinked
   } = useAuthStore();
+
+  // Show account setup section when not fully configured
+  useEffect(() => {
+    if (isAuthenticated && !isLinked) {
+      setShowAccountSetup(true);
+    } else {
+      setShowAccountSetup(false);
+    }
+  }, [isAuthenticated, isLinked]);
 
   // Initialize SDK if in mini app
   useEffect(() => {
@@ -103,16 +117,6 @@ export function Dashboard() {
   const userName = spotifyUser?.name || "Vibe Friend";
   const fidString = fid ? String(fid) : "";
 
-  // Display debugging info in development
-  const debugAuthInfo = process.env.NODE_ENV === 'development' ? (
-    <div className="px-4 mb-2 text-xs text-gray-500">
-      <p>Auth Debug: {isAuthenticated ? 'Authenticated' : 'Not Authenticated'}</p>
-      <p>Spotify ID: {spotifyId || 'None'}</p>
-      <p>FID: {fidString || 'None'}</p>
-      <p>Mini App: {isMiniApp ? 'Yes' : 'No'}</p>
-    </div>
-  ) : null;
-
   return (
     <div
       className="flex flex-col min-h-screen w-full max-w-md mx-auto"
@@ -172,11 +176,24 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Debug info (only in development) */}
-      {debugAuthInfo}
+      {/* Account Status Display */}
+      <div className="px-4">
+        <AccountStatus />
+      </div>
 
-      {/* Account Linking Section */}
-      <AccountLinking />
+      {/* Account Setup Section - only shown when needed */}
+      {showAccountSetup && (
+        <div className="px-4">
+          <AccountOnboarding />
+        </div>
+      )}
+
+      {/* Account Linking Section - used if onboarding is not shown */}
+      {!showAccountSetup && !isLinked && (
+        <div className="px-4">
+          <AccountLinking />
+        </div>
+      )}
 
       {/* Personal Music Section - only displays when user has Spotify connected */}
       <div className="px-4">
@@ -212,11 +229,22 @@ export function Dashboard() {
         )}
       </div>
 
-      {/* Footer */}
+      {/* Footer with account linking status */}
       <div className="p-4 flex justify-between items-center">
-        <p className="text-xs text-gray-400">
-          Data secured with TLSNotary
-        </p>
+        <div className="text-xs text-gray-400">
+          {isLinked ? (
+            <span className="flex items-center text-green-400">
+              <span className="w-2 h-2 bg-green-500 rounded-full mr-1"></span>
+              Accounts Linked
+            </span>
+          ) : (
+            <span className="flex items-center">
+              <span className="w-2 h-2 bg-yellow-500 rounded-full mr-1"></span>
+              Accounts Not Linked
+            </span>
+          )}
+        </div>
+
         {/* Don't show sign out button in mini app mode */}
         {!isMiniApp && (
           <Button

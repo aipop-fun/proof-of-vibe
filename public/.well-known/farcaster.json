@@ -3,5 +3,16 @@
         "header": "eyJmaWQiOjE5NzA0OSwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDFDYjhEMUYzYzc4NTRGQmUwY0U1NjBEYUNGNjc3NWE2OGIyQzNhNTEifQ",
         "payload": "eyJkb21haW4iOiJ0aW1icmEuYWlwb3AuZnVuIn0",
         "signature": "MHgzZWUzN2ZhY2FhOWM2MjEyMDMzNjhmOTRjNDE0YjYyMTY4NzYzMGFjMDdjYTRlZTNiOTk3MDQ4MGY0MGU3YjMwNzE3NzFhMWQzYjk5NDc3ZjA3NDMwYmYxYTJlNTg5ZjE4NDljNjdmY2M4NWFlMDJhNWQwOWE3MTI5NjIyZGUwYjFi"
+    },
+    "frame": {
+        "version": "1",
+        "name": "Timbra",
+        "iconUrl": "https://timbra.aipop.fun/icon.png",
+        "homeUrl": "https://timbra.aipop.fun",
+        "imageUrl": "https://timbra.aipop.fun/image.png",
+        "buttonTitle": "Share your vibe",
+        "splashImageUrl": "https://timbra.aipop.fun/splash.png",
+        "splashBackgroundColor": "#8A2BE2",
+        "webhookUrl": "https://timbra.aipop.fun/api/webhook"
     }
 }
