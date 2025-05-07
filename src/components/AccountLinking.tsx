@@ -1,32 +1,68 @@
 /* eslint-disable react/no-unescaped-entities,  @typescript-eslint/no-unused-vars, @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
-
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { Button } from "~/components/ui/Button";
 import { SignInWithFarcaster } from "~/components/SignInWithFarcaster";
+import { useAuthStore } from "~/lib/stores/authStore";
+import sdk from "@farcaster/frame-sdk";
+
+interface LinkAccountsResponse {
+  success: boolean;
+  error?: string;
+  user?: {
+    id: string;
+    fid: number;
+    spotifyId: string;
+    displayName?: string;
+    isLinked: boolean;
+  };
+}
 
 export function AccountLinking() {
   const { data: session, status, update } = useSession();
   const [isLinking, setIsLinking] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [isMiniApp, setIsMiniApp] = useState(false);
 
-  // Verificar se o usuário tem ambas as contas, mas elas não estão vinculadas
+  // Use Zustand store
+  const { spotifyId, fid, isAuthenticated } = useAuthStore();
+
+  // Check if running in Farcaster mini app
+  useEffect(() => {
+    const checkEnvironment = () => {
+      const isFarcasterMiniApp = window.parent !== window ||
+        !!window.location.href.match(/fc-frame=|warpcast\.com/i);
+      setIsMiniApp(isFarcasterMiniApp);
+    };
+
+    checkEnvironment();
+  }, []);
+
+  // Check if user has both accounts but they're not linked
   const needsLinking = (
-    session?.user?.fid &&
-    session?.user?.spotifyId &&
+    (session?.user?.fid || fid) &&
+    (session?.user?.spotifyId || spotifyId) &&
     !session?.user?.isLinked
   );
 
-  // Verificar se o usuário tem apenas um tipo de conta
-  const hasOnlyFarcaster = session?.user?.fid && !session?.user?.spotifyId;
-  const hasOnlySpotify = session?.user?.spotifyId && !session?.user?.fid;
+  // Check if user has only one type of account
+  const hasOnlyFarcaster = (session?.user?.fid || fid) &&
+    !(session?.user?.spotifyId || spotifyId);
 
-  // Função para vincular contas
+  const hasOnlySpotify = (session?.user?.spotifyId || spotifyId) &&
+    !(session?.user?.fid || fid);
+
+  // Function to link accounts
   const handleLinkAccounts = async () => {
-    if (!session?.user?.fid || !session?.user?.spotifyId) {
+    // Get FID and Spotify ID from session or Zustand store
+    const userFid = session?.user?.fid || fid;
+    const userSpotifyId = session?.user?.spotifyId || spotifyId;
+
+    if (!userFid || !userSpotifyId) {
+      setLinkError("Missing Farcaster ID or Spotify ID");
       return;
     }
 
@@ -34,32 +70,43 @@ export function AccountLinking() {
       setIsLinking(true);
       setLinkError(null);
 
-      // Chamar API para vincular as contas
+      // Call API to link accounts
       const response = await fetch('/api/auth/link-accounts', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          fid: session.user.fid,
-          spotifyId: session.user.spotifyId,
+          fid: userFid,
+          spotifyId: userSpotifyId,
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json() as LinkAccountsResponse;
 
       if (!response.ok || !data.success) {
         throw new Error(data.error || 'Failed to link accounts');
       }
 
-      // Atualizar a sessão para refletir as contas vinculadas
-      await update({
-        ...session,
-        user: {
-          ...session.user,
-          isLinked: true,
-        },
-      });
+      // Update session to reflect linked accounts
+      if (session) {
+        await update({
+          ...session,
+          user: {
+            ...session.user,
+            isLinked: true,
+          },
+        });
+      }
+
+      // If we're in a mini app, notify the frame when accounts are linked
+      if (isMiniApp && typeof sdk?.actions?.ready === 'function') {
+        try {
+          await sdk.actions.ready();
+        } catch (readyError) {
+          console.error("Error calling ready after linking accounts:", readyError);
+        }
+      }
 
     } catch (error) {
       console.error('Error linking accounts:', error);
@@ -69,12 +116,12 @@ export function AccountLinking() {
     }
   };
 
-  // Função para iniciar o login do Spotify
+  // Function to initiate Spotify login
   const handleConnectSpotify = async () => {
     await signIn('spotify');
   };
 
-  // Renderizar com base no estado de autenticação
+  // Display loading state while checking authentication
   if (status === 'loading') {
     return (
       <div className="p-4 bg-purple-800/20 rounded-lg mb-4 animate-pulse">
@@ -83,12 +130,13 @@ export function AccountLinking() {
     );
   }
 
-  if (!session) {
-    return null; // Não mostrar se não estiver autenticado
+  // Don't show if not authenticated
+  if (!isAuthenticated && !session) {
+    return null;
   }
 
-  // Ambas as contas estão vinculadas
-  if (session.user.isLinked) {
+  // If accounts are linked, show success message
+  if (session?.user?.isLinked) {
     return (
       <div className="p-4 bg-green-800/20 rounded-lg mb-4">
         <div className="flex items-center">
@@ -109,7 +157,7 @@ export function AccountLinking() {
     );
   }
 
-  // As contas precisam ser vinculadas
+  // If accounts need to be linked
   if (needsLinking) {
     return (
       <div className="p-4 bg-yellow-800/20 rounded-lg mb-4">
@@ -136,7 +184,7 @@ export function AccountLinking() {
     );
   }
 
-  // Tem apenas Farcaster - precisa do Spotify
+  // Has only Farcaster - needs Spotify
   if (hasOnlyFarcaster) {
     return (
       <div className="p-4 bg-blue-800/20 rounded-lg mb-4">
@@ -156,7 +204,7 @@ export function AccountLinking() {
     );
   }
 
-  // Tem apenas Spotify - precisa do Farcaster
+  // Has only Spotify - needs Farcaster
   if (hasOnlySpotify) {
     return (
       <div className="p-4 bg-blue-800/20 rounded-lg mb-4">
@@ -165,43 +213,20 @@ export function AccountLinking() {
           You're signed in with Spotify. Connect your Farcaster account to share your music.
         </p>
 
-        <SignInWithFarcasterButton />
+        <SignInWithFarcaster />
       </div>
     );
   }
 
-  // Caso padrão - não deveria chegar aqui
+  // Default case - shouldn't reach here
   return null;
 }
 
-// Botão simples para iniciar o login do Farcaster
-function SignInWithFarcasterButton() {
-  return (
-    <Button
-      onClick={() => signIn('credentials')}
-      className="w-full bg-purple-600 hover:bg-purple-700"
-    >
-      <FarcasterIcon className="w-4 h-4 mr-2" />
-      Connect Farcaster
-    </Button>
-  );
-}
-
-// Componente de ícone do Spotify
+// Spotify icon component
 function SpotifyIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.6 0 12 0zm5.5 17.3c-.2.3-.6.5-1 .5-.2 0-.4-.1-.6-.2-2.1-1.3-4.8-1.5-7.9-.9-.4.1-.8-.1-.9-.5-.1-.4.1-.8.5-.9 3.5-.8 6.5-.5 9 1 .4.2.5.7.2 1zm1.5-3.2c-.3.4-.8.6-1.2.6-.3 0-.5-.1-.7-.2-2.4-1.5-6-1.9-8.8-1-.4.1-.9-.1-1-.5-.1-.4.1-.9.5-1 3.2-1 7.2-.5 10 1.2.4.3.6.8.3 1.2v-.3zm.1-3.3c-2.9-1.7-7.6-1.9-10.3-1-.4.1-1-.1-1.1-.6-.1-.5.1-1 .6-1.1 3.1-1 8.3-.8 11.6 1.2.5.3.7.9.4 1.4-.3.4-.9.6-1.4.4l.2-.3z" />
-    </svg>
-  );
-}
-
-// Componente de ícone do Farcaster
-function FarcasterIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M11.944 0L5.482 11.195l6.462 4.726-6.462-9.477 6.462-6.444z" />
-      <path d="M11.944 24L18.406 12.805l-6.462-4.726 6.462 9.477-6.462 6.444z" />
     </svg>
   );
 }

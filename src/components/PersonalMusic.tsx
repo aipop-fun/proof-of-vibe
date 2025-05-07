@@ -1,47 +1,57 @@
+/* eslint-disable  @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 "use client";
 
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useAuthStore } from "~/lib/stores/authStore";
 import { SpotifyTopTracks } from "./SpotifyTopTracks";
-import Image from "next/image";
+import { SpotifyImage } from "./SpotifyImage";
+
+interface CurrentTrack {
+    id: string;
+    title: string;
+    artist: string;
+    album?: string;
+    coverArt?: string;
+    duration: string;
+    currentTime: string;
+}
 
 export function PersonalMusic() {
-    // Use Zustand store for everything
-    const { 
-        currentlyPlaying, 
+    const [error, setError] = useState<string | null>(null);
+
+    // Acesso ao Zustand store
+    const {
+        currentlyPlaying,
         loadingCurrentTrack,
         fetchCurrentlyPlaying,
-        spotifyId,
         isAuthenticated,
-        isExpired
+        spotifyId,
+        isExpired,
+        accessToken
     } = useAuthStore();
 
-    // Fetch currently playing track on component mount
+    // Buscar dados quando o componente montar
     useEffect(() => {
-        if (isAuthenticated && spotifyId && !isExpired()) {
+        if (isAuthenticated && accessToken && !isExpired()) {
+            // Busca inicial
             fetchCurrentlyPlaying();
-            
-            // Set up polling for currently playing track (every 30 seconds)
+
+            // Configurar polling a cada 30 segundos
             const intervalId = setInterval(() => {
                 if (isAuthenticated && !isExpired()) {
                     fetchCurrentlyPlaying();
                 }
             }, 30000);
-            
-            // Clean up interval on unmount
+
+            // Limpeza ao desmontar
             return () => clearInterval(intervalId);
         }
-    }, [isAuthenticated, spotifyId, fetchCurrentlyPlaying, isExpired]);
+    }, [accessToken, isAuthenticated, isExpired, fetchCurrentlyPlaying]);
 
-    // If not signed in with Spotify, show nothing
-    if (!isAuthenticated || !spotifyId) {
-        return null;
-    }
-
-    // Helper function to calculate progress percentage
+    // Função auxiliar para calcular a porcentagem de progresso
     const calculateProgress = (current: string, total: string): number => {
         try {
-            // Convert mm:ss format to seconds
+            // Converter formato mm:ss para segundos
             const currentParts = current.split(':');
             const totalParts = total.split(':');
 
@@ -54,67 +64,75 @@ export function PersonalMusic() {
 
             return (currentSeconds / totalSeconds) * 100;
         } catch (error) {
-            console.error('Error calculating progress:', error);
+            console.error('Erro ao calcular progresso:', error);
             return 0;
         }
     };
+
+    // Se não estiver autenticado com Spotify, não mostrar nada
+    if (!isAuthenticated || !spotifyId) {
+        return null;
+    }
 
     return (
         <div className="p-4 bg-purple-800/20 rounded-lg mb-6">
             <h2 className="text-lg font-semibold mb-3">Your Music</h2>
 
-            {loadingCurrentTrack ? (
+            {/* Exibição de erro */}
+            {error && (
+                <div className="mb-3 p-2 text-sm bg-red-900/30 text-red-200 rounded-md">
+                    {error}
+                </div>
+            )}
+
+            {loadingCurrentTrack && !currentlyPlaying ? (
                 <div className="animate-pulse">
                     <div className="h-16 bg-purple-700/30 rounded"></div>
                 </div>
             ) : (
                 <>
-                    {/* Currently playing track */}
+                    {/* Faixa atual */}
                     {currentlyPlaying ? (
                         <div className="mb-4">
                             <p className="text-sm text-green-400 mb-1">Currently Playing</p>
                             <div className="flex items-center">
-                                {currentlyPlaying.coverArt && (
-                                    <div className="relative w-16 h-16 mr-3 flex-shrink-0">
-                                        <Image
-                                            src={currentlyPlaying.coverArt}
-                                            alt={currentlyPlaying.title}
-                                            className="rounded"
-                                            fill
-                                            sizes="64px"
-                                            style={{ objectFit: 'cover' }}
-                                        />
-                                    </div>
-                                )}
+                                <div className="relative w-16 h-16 mr-3 flex-shrink-0">
+                                    <SpotifyImage
+                                        src={currentlyPlaying.coverArt || '/api/placeholder/60/60'}
+                                        alt={currentlyPlaying.title}
+                                        className="rounded"
+                                        fill
+                                        sizes="64px"
+                                        style={{ objectFit: 'cover' }}
+                                    />
+                                </div>
                                 <div>
                                     <p className="font-medium">{currentlyPlaying.title}</p>
                                     <p className="text-sm text-gray-300">{currentlyPlaying.artist}</p>
-                                    {currentlyPlaying.currentTime && currentlyPlaying.duration && (
-                                        <div className="flex items-center mt-1">
-                                            <div className="w-32 h-1 bg-gray-700 rounded-full mr-2">
-                                                <div
-                                                    className="h-1 bg-green-500 rounded-full"
-                                                    style={{
-                                                        width: `${calculateProgress(
-                                                            currentlyPlaying.currentTime,
-                                                            currentlyPlaying.duration
-                                                        )}%`
-                                                    }}
-                                                ></div>
-                                            </div>
-                                            <span className="text-xs text-gray-400">
-                                                {currentlyPlaying.currentTime} / {currentlyPlaying.duration}
-                                            </span>
+                                    <div className="flex items-center mt-1">
+                                        <div className="w-32 h-1 bg-gray-700 rounded-full mr-2">
+                                            <div
+                                                className="h-1 bg-green-500 rounded-full"
+                                                style={{
+                                                    width: `${calculateProgress(
+                                                        currentlyPlaying.currentTime ?? '0:00',
+                                                        currentlyPlaying.duration ?? '0:00'
+                                                    )}%`
+                                                }}
+                                            ></div>
                                         </div>
-                                    )}
+                                        <span className="text-xs text-gray-400">
+                                            {currentlyPlaying.currentTime} / {currentlyPlaying.duration}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     ) : (
-                        <p className="text-sm text-gray-400 mb-3">Not currently playing anything</p>
+                        <p className="text-sm text-gray-400 mb-3">Não está tocando nada no momento</p>
                     )}
 
-                    {/* Top tracks section using the new component */}
+                    {/* Componente de faixas principais */}
                     <SpotifyTopTracks />
                 </>
             )}

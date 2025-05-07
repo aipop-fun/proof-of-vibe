@@ -21,7 +21,7 @@ importers:
         specifier: '>=0.0.18 <1.0.0'
         version: 0.0.23(typescript@5.8.3)
       '@farcaster/frame-sdk':
-        specifier: '>=0.0.31 <1.0.0'
+        specifier: ^0.0.37
         version: 0.0.37(typescript@5.8.3)(zod@3.24.3)
       '@farcaster/frame-wagmi-connector':
         specifier: '>=0.0.19 <1.0.0'

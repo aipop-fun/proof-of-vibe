@@ -1,142 +1,110 @@
-/* eslint-disable  @typescript-eslint/no-explicit-any, @typescript-eslint/ban-ts-comment */
-
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/ban-ts-comment */
 "use client";
 
 import { useCallback, useState, useEffect } from "react";
-import { signIn, getCsrfToken } from "next-auth/react";
-import sdk, { SignIn as SignInCore } from "@farcaster/frame-sdk";
+import { signIn as nextAuthSignIn, getCsrfToken } from "next-auth/react";
+import sdk from "@farcaster/frame-sdk";
 import { Button } from "~/components/ui/Button";
 import { useAuthStore } from "~/lib/stores/authStore";
 import { useRouter } from "next/navigation";
 
 export function SignInWithFarcaster() {
     const [signingIn, setSigningIn] = useState(false);
-    const [signInFailure, setSignInFailure] = useState("");
-    const [isSDKReady, setIsSDKReady] = useState(false);
+    const [signInError, setSignInError] = useState<string | null>(null);
     const router = useRouter();
-
-    // Use our Zustand store
     const { setFarcasterAuth } = useAuthStore();
 
-    // Check if the SDK is available
-    useEffect(() => {
-        // Use a small delay to ensure SDK is properly initialized
-        const timer = setTimeout(() => {
-            const sdkAvailable = !!(sdk && typeof sdk.actions?.signIn === 'function');
-            setIsSDKReady(sdkAvailable);
-            if (!sdkAvailable) {
-                console.warn("Farcaster SDK not available or not properly initialized");
-            }
-        }, 1000);
-
-        return () => clearTimeout(timer);
-    }, []);
-
-    const getNonce = useCallback(async () => {
-        try {
-            const nonce = await getCsrfToken();
-            if (!nonce) {
-                console.error("Failed to get CSRF token for authentication");
-                throw new Error("Unable to generate authentication token");
-            }
-            return nonce;
-        } catch (error) {
-            console.error("Error getting CSRF token:", error);
-            throw error;
-        }
-    }, []);
-
+    // Main authentication handler
     const handleSignIn = useCallback(async () => {
         try {
             setSigningIn(true);
-            setSignInFailure("");
+            setSignInError(null);
 
-            // Verify SDK is available
-            if (!isSDKReady) {
-                setSignInFailure("Farcaster login is not available at the moment. Please try again later.");
-                console.error("SDK not properly initialized for sign-in attempt");
-                return;
+            // Check SDK availability
+            if (!sdk?.actions?.signIn) {
+                throw new Error("Farcaster authentication unavailable");
             }
 
-            console.log("Starting Farcaster sign-in process");
-            const nonce = await getNonce();
-            console.log("Got authentication nonce, proceeding with sign-in");
-
-            // Try to sign in with Farcaster
-            const result = await sdk.actions.signIn({ nonce });
-            console.log("Sign-in response received:", result);
-
-            if (!result || !result.message || !result.signature) {
-                throw new Error("Invalid response from Farcaster sign-in");
-            }
-
-            // Extract FID from message
-            let fid = 0;
+            // Try silent authentication in mini app context
             try {
-                const messageObj = JSON.parse(result.message);
-                fid = messageObj.fid || messageObj.message?.fid || 0;
-
-                if (!fid) {
-                    throw new Error("No FID found in message");
+                const isMiniApp = await sdk.isInMiniApp();
+                if (isMiniApp) {
+                    const context = await sdk.context;
+                    if (context?.user?.fid) {
+                        setFarcasterAuth({
+                            fid: context.user.fid,
+                            username: context.user.username,
+                            displayName: context.user.displayName,
+                            pfpUrl: context.user.pfpUrl
+                        });
+                        await sdk.actions.ready();
+                        router.push('/');
+                        return;
+                    }
                 }
-
-                console.log("Extracted FID:", fid);
-            } catch (error) {
-                console.error("Error parsing Farcaster message:", error);
-                throw new Error("Could not parse Farcaster authentication data");
+            } catch (contextError) {
+                console.warn("Mini app context unavailable, falling back to normal flow");
             }
 
-            // Store FID in Zustand
-            setFarcasterAuth({ fid });
-            console.log("Stored FID in Zustand:", fid);
+            // Regular authentication flow
+            const nonce = await getCsrfToken() || crypto.randomUUID();
+            const { message, signature } = await sdk.actions.signIn({ nonce });
 
-            // Complete the authentication with NextAuth for session consistency
-            const authResult = await signIn("credentials", {
-                message: result.message,
-                signature: result.signature,
+            // Validate response
+            if (typeof message !== 'string' || typeof signature !== 'string') {
+                throw new Error("Invalid authentication response");
+            }
+
+            // Parse message payload
+            let messagePayload;
+            try {
+                messagePayload = JSON.parse(message);
+            } catch (e) {
+                throw new Error("Failed to parse authentication message");
+            }
+
+            // Store auth data
+            setFarcasterAuth({
+                fid: messagePayload.fid,
+                username: messagePayload.username,
+                displayName: messagePayload.displayName,
+                pfpUrl: messagePayload.pfpUrl
+            });
+
+            // Complete NextAuth flow
+            const result = await nextAuthSignIn("credentials", {
+                message,
+                signature,
                 redirect: false,
             });
 
-            if (authResult?.error) {
-                console.error("NextAuth sign-in failed:", authResult.error);
-                setSignInFailure(`Authentication failed: ${authResult.error}`);
-            } else {
-                console.log("Sign-in successful");
-                // Redirect to home page
-                router.push('/');
-            }
-        } catch (error) {
-            console.error("Sign-in error:", error);
+            if (result?.error) throw new Error(result.error);
+            router.push('/');
 
-            // Handle specific error types
-            if (error instanceof SignInCore.RejectedByUser) {
-                setSignInFailure("Sign-in was rejected");
-            } else if (error instanceof Error) {
-                setSignInFailure(`Error: ${error.message}`);
-            } else {
-                setSignInFailure("An unknown error occurred during sign-in");
-            }
+        } catch (error) {
+            setSignInError(
+                error instanceof Error ? error.message : "Authentication failed"
+            );
         } finally {
             setSigningIn(false);
         }
-    }, [getNonce, isSDKReady, setFarcasterAuth, router]);
+    }, [setFarcasterAuth, router]);
 
     return (
-        <div className="flex flex-col items-center">
+        <div className="flex flex-col items-center gap-4">
             <Button
                 onClick={handleSignIn}
-                disabled={signingIn || !isSDKReady}
+                disabled={signingIn}
                 className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-full font-medium"
+                data-testid="farcaster-signin-button"
             >
-                {signingIn
-                    ? "Signing in..."
-                    : !isSDKReady
-                        ? "Farcaster Login Initializing..."
-                        : "Sign in with Farcaster"}
+                {signingIn ? "Signing in..." : "Sign in with Farcaster"}
             </Button>
 
-            {signInFailure && (
-                <p className="mt-4 text-red-400 text-sm">{signInFailure}</p>
+            {signInError && (
+                <p className="text-red-400 text-sm max-w-xs text-center">
+                    {signInError}
+                </p>
             )}
         </div>
     );

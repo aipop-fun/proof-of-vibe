@@ -1,8 +1,9 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps,  @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars */
+/* eslint-disable react-hooks/exhaustive-deps, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 interface SpotifyTrack {
+    currentTime?: string;
     id: string;
     title: string;
     artist: string;
@@ -29,7 +30,7 @@ interface SpotifyAuthState {
     isAuthenticated: boolean;
     fid?: number | null;
 
-
+    // Music data
     currentlyPlaying: SpotifyTrack | null;
     topTracks: Record<TimeRange, SpotifyTrack[]>;
     isLoadingTracks: Record<TimeRange, boolean>;
@@ -80,7 +81,7 @@ export const useAuthStore = create<SpotifyAuthState>()(
             isAuthenticated: false,
             fid: null,
 
-
+            // Music data
             currentlyPlaying: null,
             topTracks: {
                 short_term: [], // Weekly (approximately last 4 weeks)
@@ -151,52 +152,28 @@ export const useAuthStore = create<SpotifyAuthState>()(
                 }));
 
                 try {
-                    // For development, we'll use mock data
-                    // In production, this would be a real API call
-                    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API latency
-
-                    // Create mock data that's different for each time range
-                    const timeRangeLabels = {
-                        short_term: 'Weekly',
-                        medium_term: 'Monthly',
-                        long_term: 'All Time'
-                    };
-
-                    const tracks = Array(10).fill(null).map((_, index) => ({
-                        id: `${timeRange}-track-${index}`,
-                        title: `${timeRangeLabels[timeRange]} Top ${index + 1}`,
-                        artist: `Artist ${index % 3 + 1}`,
-                        album: `Album ${Math.floor(index / 3) + 1}`,
-                        coverArt: '/api/placeholder/60/60',
-                        duration: `${Math.floor(Math.random() * 4) + 2}:${Math.floor(Math.random() * 60).toString().padStart(2, '0')}`,
-                        popularity: Math.floor(Math.random() * 100),
-                        timeRange
-                    }));
-
-                    // In production code, you would make the Spotify API call:
-                    /*
+                    // Real API call to Spotify
                     const response = await fetch(`https://api.spotify.com/v1/me/top/tracks?time_range=${timeRange}&limit=50`, {
                         headers: {
                             'Authorization': `Bearer ${state.accessToken}`
                         }
                     });
-                    
+
                     if (!response.ok) {
                         throw new Error(`Failed to fetch top tracks: ${response.statusText}`);
                     }
-                    
+
                     const data = await response.json();
-                    const tracks = data.items.map(item => ({
+                    const tracks = data.items.map((item: { id: any; name: any; artists: { name: any; }[]; album: { name: any; images: { url: any; }[]; }; duration_ms: number; popularity: any; }) => ({
                         id: item.id,
                         title: item.name,
-                        artist: item.artists.map(artist => artist.name).join(', '),
+                        artist: item.artists.map((artist: { name: any; }) => artist.name).join(', '),
                         album: item.album.name,
-                        coverArt: item.album.images[0]?.url,
+                        coverArt: item.album.images[0]?.url || '/api/placeholder/60/60',
                         duration: formatDuration(item.duration_ms),
                         popularity: item.popularity,
                         timeRange
                     }));
-                    */
 
                     // Update store with fetched tracks
                     set(state => ({
@@ -234,56 +211,40 @@ export const useAuthStore = create<SpotifyAuthState>()(
                 set({ loadingCurrentTrack: true, error: null });
 
                 try {
-                    // For development, we'll use mock data
-                    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API latency
-
-                    // Mock current track
-                    const currentTrack = {
-                        id: 'current-track-id',
-                        title: 'Currently Playing Track',
-                        artist: 'Current Artist',
-                        album: 'Current Album',
-                        coverArt: '/api/placeholder/60/60',
-                        duration: '3:45',
-                        currentTime: '1:30',
-                    };
-
-                    // In production code, you would make the Spotify API call:
-                    /*
+                    // Real API call to Spotify
                     const response = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
                         headers: {
                             'Authorization': `Bearer ${state.accessToken}`
                         }
                     });
-                    
+
                     // No content means nothing is playing
                     if (response.status === 204) {
                         set({ currentlyPlaying: null, loadingCurrentTrack: false });
                         return;
                     }
-                    
+
                     if (!response.ok) {
                         throw new Error(`Failed to fetch currently playing: ${response.statusText}`);
                     }
-                    
+
                     const data = await response.json();
-                    
+
                     // Only process if actually playing (not paused)
                     if (!data.is_playing) {
                         set({ currentlyPlaying: null, loadingCurrentTrack: false });
                         return;
                     }
-                    
+
                     const currentTrack = {
                         id: data.item.id,
                         title: data.item.name,
-                        artist: data.item.artists.map(artist => artist.name).join(', '),
+                        artist: data.item.artists.map((artist: { name: any; }) => artist.name).join(', '),
                         album: data.item.album.name,
-                        coverArt: data.item.album.images[0]?.url,
+                        coverArt: data.item.album.images[0]?.url || '/api/placeholder/60/60',
                         duration: formatDuration(data.item.duration_ms),
-                        currentTime: formatDuration(data.progress_ms),
+                        currentTime: formatDuration(data.progress_ms)
                     };
-                    */
 
                     set({ currentlyPlaying: currentTrack, loadingCurrentTrack: false });
 
@@ -314,7 +275,7 @@ export const useAuthStore = create<SpotifyAuthState>()(
         }),
         {
             name: 'spotify-auth-storage',
-            // Only store necessary fields, exclude sensitive tokens from localStorage
+            // Only store necessary fields, exclude sensitive tokens and music data from localStorage
             partialize: (state) => ({
                 spotifyId: state.spotifyId,
                 spotifyUser: state.spotifyUser,

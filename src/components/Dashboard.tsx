@@ -4,7 +4,7 @@
 //@ts-nocheck
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useMusic } from "./MusicContext";
 import { FriendsListening } from "./FriendsListening";
@@ -14,9 +14,9 @@ import sdk from "@farcaster/frame-sdk";
 import { AccountLinking } from "./AccountLinking";
 import { PersonalMusic } from "./PersonalMusic";
 import { useAuthStore } from "~/lib/stores/authStore";
+import { useFrame } from "./providers/FrameProvider";
 
 export function Dashboard() {
-  // Use default values from MusicContext to ensure type safety
   const {
     loading = { friends: false, weekly: false },
     error = null,
@@ -28,6 +28,9 @@ export function Dashboard() {
   const [tab, setTab] = useState<"current" | "weekly">("current");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Get context from FrameProvider
+  const { isMiniApp, context } = useFrame();
+
   // Use Zustand store
   const {
     spotifyId,
@@ -36,6 +39,21 @@ export function Dashboard() {
     clearAuth,
     isAuthenticated
   } = useAuthStore();
+
+  // Initialize SDK if in mini app
+  useEffect(() => {
+    const initializeInMiniApp = async () => {
+      if (isMiniApp && typeof sdk?.actions?.ready === 'function') {
+        try {
+          await sdk.actions.ready();
+        } catch (readyError) {
+          console.error("Error calling ready in Dashboard:", readyError);
+        }
+      }
+    };
+
+    initializeInMiniApp();
+  }, [isMiniApp]);
 
   const handleSignOut = async () => {
     // Clear the Zustand store
@@ -49,7 +67,12 @@ export function Dashboard() {
   };
 
   const handleShare = () => {
-    sdk.actions.openUrl("https://warpcast.com/~/compose?text=Check%20out%20what%20my%20friends%20are%20listening%20to%20on%20Proof%20of%20Vibes!");
+    if (typeof sdk?.actions?.openUrl === 'function') {
+      sdk.actions.openUrl("https://warpcast.com/~/compose?text=Check%20out%20what%20my%20friends%20are%20listening%20to%20on%20Proof%20of%20Vibes!");
+    } else {
+      // Fallback for regular web browser
+      window.open("https://warpcast.com/~/compose?text=Check%20out%20what%20my%20friends%20are%20listening%20to%20on%20Proof%20of%20Vibes!", "_blank");
+    }
   };
 
   const handleRefresh = () => {
@@ -86,11 +109,20 @@ export function Dashboard() {
       <p>Auth Debug: {isAuthenticated ? 'Authenticated' : 'Not Authenticated'}</p>
       <p>Spotify ID: {spotifyId || 'None'}</p>
       <p>FID: {fidString || 'None'}</p>
+      <p>Mini App: {isMiniApp ? 'Yes' : 'No'}</p>
     </div>
   ) : null;
 
   return (
-    <div className="flex flex-col min-h-screen w-full max-w-md mx-auto">
+    <div
+      className="flex flex-col min-h-screen w-full max-w-md mx-auto"
+      style={isMiniApp ? {
+        paddingTop: context?.client.safeAreaInsets?.top ?? 0,
+        paddingBottom: context?.client.safeAreaInsets?.bottom ?? 0,
+        paddingLeft: context?.client.safeAreaInsets?.left ?? 0,
+        paddingRight: context?.client.safeAreaInsets?.right ?? 0,
+      } : {}}
+    >
       {/* Header */}
       <div className="px-4 py-6">
         <div className="flex justify-between items-center">
@@ -151,11 +183,13 @@ export function Dashboard() {
         <PersonalMusic />
       </div>
 
-      {/* Tab navigation */}
-      <div className="flex border-b border-purple-800">
-        <TabButton id="current" label="Friends Listening" />
-        <TabButton id="weekly" label="Top Weekly" />
-      </div>
+      {/* Tab navigation - only show in standard view, not in mini app */}
+      {!isMiniApp && (
+        <div className="flex border-b border-purple-800">
+          <TabButton id="current" label="Friends Listening" />
+          <TabButton id="weekly" label="Top Weekly" />
+        </div>
+      )}
 
       {/* Content area */}
       <div className="flex-grow p-4">
@@ -165,10 +199,16 @@ export function Dashboard() {
           </div>
         )}
 
-        {tab === "current" ? (
+        {/* In mini app mode, always show FriendsListening */}
+        {isMiniApp ? (
           <FriendsListening isLoading={loading.friends} />
         ) : (
-          <TopWeeklyTracks isLoading={loading.weekly} />
+          // In normal web mode, show based on selected tab
+          tab === "current" ? (
+            <FriendsListening isLoading={loading.friends} />
+          ) : (
+            <TopWeeklyTracks isLoading={loading.weekly} />
+          )
         )}
       </div>
 
@@ -177,12 +217,15 @@ export function Dashboard() {
         <p className="text-xs text-gray-400">
           Data secured with TLSNotary
         </p>
-        <Button
-          onClick={handleSignOut}
-          className="text-xs px-3 py-1 bg-transparent hover:bg-purple-800 border border-purple-600"
-        >
-          Sign Out
-        </Button>
+        {/* Don't show sign out button in mini app mode */}
+        {!isMiniApp && (
+          <Button
+            onClick={handleSignOut}
+            className="text-xs px-3 py-1 bg-transparent hover:bg-purple-800 border border-purple-600"
+          >
+            Sign Out
+          </Button>
+        )}
       </div>
     </div>
   );

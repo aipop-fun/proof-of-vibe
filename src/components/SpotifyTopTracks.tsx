@@ -1,214 +1,158 @@
+/* eslint-disable react-hooks/exhaustive-deps, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '~/lib/stores/authStore';
-import Image from 'next/image';
+import { SpotifyImage } from './SpotifyImage';
 
 type TimeRange = 'short_term' | 'medium_term' | 'long_term';
 
-// Component for displaying a user's top tracks from Spotify
 export function SpotifyTopTracks() {
-    // Access Zustand store
-    const { 
-        topTracks, 
-        isLoadingTracks, 
-        fetchTopTracks, 
-        isAuthenticated, 
+    const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('medium_term');
+    const [isExpanded, setIsExpanded] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    // Acessar estado do Zustand
+    const {
+        topTracks,
+        isLoadingTracks,
+        fetchTopTracks,
+        isAuthenticated,
         spotifyId,
         isExpired,
-        error
+        accessToken
     } = useAuthStore();
-    
-    // Track selected time range locally
-    const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('medium_term');
-    
-    // Toggle for showing more tracks
-    const [isExpanded, setIsExpanded] = useState(false);
 
-    // User-friendly labels for time ranges
+    // Rótulos amigáveis para períodos de tempo
     const timeRangeLabels = {
         short_term: 'Last 4 Weeks',
         medium_term: 'Last 6 Months',
         long_term: 'All Time'
     };
 
-    // Fetch top tracks for the selected time range on component mount and when dependencies change
+    // Buscar faixas principais quando o componente for montado ou quando as dependências mudarem
     useEffect(() => {
-        if (isAuthenticated && spotifyId && !isExpired() && topTracks[selectedTimeRange].length === 0) {
+        if (isAuthenticated && accessToken && !isExpired() &&
+            topTracks[selectedTimeRange].length === 0 &&
+            !isLoadingTracks[selectedTimeRange]) {
             fetchTopTracks(selectedTimeRange);
         }
-    }, [isAuthenticated, spotifyId, selectedTimeRange, fetchTopTracks, isExpired, topTracks]);
+    }, [selectedTimeRange, accessToken, isAuthenticated, isExpired, fetchTopTracks, topTracks, isLoadingTracks]);
 
-    // Handler for changing time range
+    // Manipulador para alterar o período de tempo
     const handleTimeRangeChange = (timeRange: TimeRange) => {
         setSelectedTimeRange(timeRange);
-        
-        // Only fetch if we don't already have data for this time range
+
+        // Buscar dados se ainda não estiverem carregados
         if (topTracks[timeRange].length === 0 && !isLoadingTracks[timeRange]) {
             fetchTopTracks(timeRange);
         }
     };
 
-    // Toggle expanded view
+    // Alternar visualização expandida
     const toggleExpanded = () => {
         setIsExpanded(!isExpanded);
     };
 
-    // Handle refresh data
+    // Manipulador para atualizar
     const handleRefresh = () => {
         fetchTopTracks(selectedTimeRange);
     };
 
-    // If not authenticated with Spotify, don't show anything
-    if (!isAuthenticated || !spotifyId) {
-        return null;
-    }
-
-    // If loading, show a loading skeleton
-    if (isLoadingTracks[selectedTimeRange]) {
-        return (
-            <div className="mt-3 space-y-2">
-                <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-sm font-medium">Your Top Tracks</h3>
-                </div>
-                
-                <div className="flex space-x-2 mb-3 text-xs">
-                    {Object.entries(timeRangeLabels).map(([range]) => (
-                        <div
-                            key={range}
-                            className={`px-2 py-1 rounded ${
-                                selectedTimeRange === range 
-                                    ? 'bg-purple-700 text-white' 
-                                    : 'bg-purple-900/50 text-gray-300'
-                            }`}
-                        >
-                            {timeRangeLabels[range as TimeRange]}
-                        </div>
-                    ))}
-                </div>
-                
-                {/* Loading skeleton */}
-                <div className="animate-pulse space-y-2">
-                    {[...Array(5)].map((_, i) => (
-                        <div key={i} className="h-14 bg-purple-800/20 rounded-md"></div>
-                    ))}
-                </div>
-            </div>
-        );
-    }
-
     const tracksToShow = topTracks[selectedTimeRange] || [];
 
-    // If no tracks available
-    if (tracksToShow.length === 0) {
-        return (
-            <div className="mt-3">
-                <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-sm font-medium">Your Top Tracks</h3>
-                </div>
-                
-                <div className="flex space-x-2 mb-3 text-xs">
-                    {Object.entries(timeRangeLabels).map(([range, label]) => (
-                        <button
-                            key={range}
-                            className={`px-2 py-1 rounded ${
-                                selectedTimeRange === range 
-                                    ? 'bg-purple-700 text-white' 
-                                    : 'bg-purple-900/50 text-gray-300 hover:bg-purple-800/50'
-                            }`}
-                            onClick={() => handleTimeRangeChange(range as TimeRange)}
-                        >
-                            {label}
-                        </button>
-                    ))}
-                </div>
-                
-                <div className="text-center text-gray-400 p-4 bg-purple-900/20 rounded-md">
-                    <p>No top tracks available for this time period</p>
-                    <button 
-                        onClick={handleRefresh}
-                        className="mt-2 text-sm text-purple-400 hover:text-purple-300"
-                    >
-                        Refresh data
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
-    // Display tracks
     return (
         <div className="mt-3">
             <div className="flex justify-between items-center mb-3">
                 <h3 className="text-sm font-medium">Your Top Tracks</h3>
                 <div className="flex space-x-2">
-                    <button 
+                    <button
                         onClick={handleRefresh}
                         className="text-xs text-purple-400 hover:text-purple-300"
+                        disabled={isLoadingTracks[selectedTimeRange]}
                     >
-                        Refresh
+                        {isLoadingTracks[selectedTimeRange] ? 'Loading...' : 'Refresh'}
                     </button>
-                    <button 
-                        onClick={toggleExpanded} 
+                    <button
+                        onClick={toggleExpanded}
                         className="text-xs text-purple-400 hover:text-purple-300"
                     >
                         {isExpanded ? 'Show Less' : 'Show More'}
                     </button>
                 </div>
             </div>
-            
-            {/* Time range selector */}
+
+            {/* Seletor de período de tempo */}
             <div className="flex space-x-2 mb-3 text-xs">
                 {Object.entries(timeRangeLabels).map(([range, label]) => (
                     <button
                         key={range}
-                        className={`px-2 py-1 rounded ${
-                            selectedTimeRange === range 
-                                ? 'bg-purple-700 text-white' 
+                        className={`px-2 py-1 rounded ${selectedTimeRange === range
+                                ? 'bg-purple-700 text-white'
                                 : 'bg-purple-900/50 text-gray-300 hover:bg-purple-800/50'
-                        }`}
+                            }`}
                         onClick={() => handleTimeRangeChange(range as TimeRange)}
+                        disabled={isLoadingTracks[range as TimeRange]}
                     >
                         {label}
                     </button>
                 ))}
             </div>
-            
-            {/* Error display */}
+
+            {/* Exibição de erro */}
             {error && (
                 <div className="mb-3 p-2 text-sm bg-red-900/30 text-red-200 rounded-md">
                     {error}
                 </div>
             )}
-            
-            {/* Tracks list */}
-            <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                {tracksToShow.slice(0, isExpanded ? undefined : 5).map((track) => (
-                    <div key={track.id} className="flex items-center p-2 bg-purple-900/30 rounded">
-                        {track.coverArt && (
-                            <div className="relative w-10 h-10 mr-3 flex-shrink-0">
-                                <Image
-                                    src={track.coverArt}
-                                    alt={track.title}
-                                    className="rounded"
-                                    fill
-                                    sizes="40px"
-                                    style={{ objectFit: 'cover' }}
-                                />
-                            </div>
-                        )}
-                        <div className="min-w-0 flex-grow">
-                            <p className="font-medium text-sm truncate">{track.title}</p>
-                            <p className="text-xs text-gray-300 truncate">{track.artist}</p>
+
+            {/* Estado de carregamento */}
+            {isLoadingTracks[selectedTimeRange] ? (
+                <div className="animate-pulse space-y-2">
+                    {[...Array(4)].map((_, i) => (
+                        <div key={i} className="h-14 bg-purple-800/20 rounded-md"></div>
+                    ))}
+                </div>
+            ) : (
+                /* Lista de faixas */
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                    {tracksToShow.length === 0 ? (
+                        <div className="text-center text-gray-400 p-4">
+                            <p>Nenhuma faixa encontrada para este período</p>
+                            <button
+                                onClick={() => fetchTopTracks(selectedTimeRange)}
+                                className="mt-2 text-sm text-purple-400 hover:text-purple-300"
+                            >
+                                Tentar novamente
+                            </button>
                         </div>
-                        {track.popularity !== undefined && (
-                            <div className="text-xs text-gray-400 ml-2">
-                                {track.popularity}%
+                    ) : (
+                        tracksToShow.slice(0, isExpanded ? undefined : 5).map((track) => (
+                            <div key={track.id} className="flex items-center p-2 bg-purple-900/30 rounded">
+                                <div className="relative w-10 h-10 mr-3 flex-shrink-0">
+                                    <SpotifyImage
+                                        src={track.coverArt || '/api/placeholder/60/60'}
+                                        alt={track.title}
+                                        className="rounded"
+                                        fill
+                                        sizes="40px"
+                                        style={{ objectFit: 'cover' }}
+                                    />
+                                </div>
+                                <div className="min-w-0 flex-grow">
+                                    <p className="font-medium text-sm truncate">{track.title}</p>
+                                    <p className="text-xs text-gray-300 truncate">{track.artist}</p>
+                                </div>
+                                {track.popularity !== undefined && (
+                                    <div className="text-xs text-gray-400 ml-2">
+                                        {track.popularity}%
+                                    </div>
+                                )}
                             </div>
-                        )}
-                    </div>
-                ))}
-            </div>
+                        ))
+                    )}
+                </div>
+            )}
         </div>
     );
 }
