@@ -6,7 +6,6 @@ import sdk, {
   type FrameNotificationDetails,
   AddFrame
 } from "@farcaster/frame-sdk";
-import { createStore } from "mipd";
 import React from "react";
 
 interface FrameContextType {
@@ -16,7 +15,7 @@ interface FrameContextType {
   notificationDetails: FrameNotificationDetails | null;
   lastEvent: string;
   isMiniApp: boolean;
-  addFrame: () => Promise<void>;
+  addFrame: () => Promise<AddFrame.AddFrameResult>;
   addFrameResult: string;
 }
 
@@ -51,28 +50,33 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
    */
   const addFrame = useCallback(async () => {
     try {
-      setNotificationDetails(null);
+      setAddFrameResult("");
 
+      // Call the SDK action to add the frame
       const result = await sdk.actions.addFrame();
 
       if (result.notificationDetails) {
         setNotificationDetails(result.notificationDetails);
+        setAdded(true);
+
+        // Store notification token if needed
+        console.log("Frame added with notification details", result.notificationDetails);
+
+        // Set the result message
+        setAddFrameResult("Frame successfully added!");
       }
-      setAddFrameResult(
-        result.notificationDetails
-          ? `Added, got notification token ${result.notificationDetails.token} and url ${result.notificationDetails.url}`
-          : "Added, got no notification details"
-      );
+
+      return result;
     } catch (error) {
       if (error instanceof AddFrame.RejectedByUser) {
-        setAddFrameResult(`Not added: ${error.message}`);
+        setAddFrameResult(`User rejected adding the frame: ${error.message}`);
+      } else if (error instanceof AddFrame.InvalidDomainManifest) {
+        setAddFrameResult(`Invalid domain manifest: ${error.message}`);
+      } else {
+        setAddFrameResult(`Error adding frame: ${error}`);
       }
-
-      if (error instanceof AddFrame.InvalidDomainManifest) {
-        setAddFrameResult(`Not added: ${error.message}`);
-      }
-
-      setAddFrameResult(`Error: ${error}`);
+      console.error("Error adding frame:", error);
+      throw error;
     }
   }, []);
 
@@ -88,6 +92,15 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
         // Get context from SDK
         const frameContext = await sdk.context;
         setContext(frameContext);
+
+        // Check if the app is already added
+        if (frameContext?.client?.added) {
+          setAdded(true);
+          if (frameContext.client.notificationDetails) {
+            setNotificationDetails(frameContext.client.notificationDetails);
+          }
+        }
+
         setIsSDKLoaded(true);
 
         // Set up event listeners
@@ -107,6 +120,7 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
         sdk.on("frameRemoved", () => {
           console.log("Frame removed");
           setAdded(false);
+          setNotificationDetails(null);
           setLastEvent("Frame removed");
         });
 
@@ -122,27 +136,15 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
           setLastEvent("Notifications disabled");
         });
 
-        sdk.on("primaryButtonClicked", () => {
-          console.log("Primary button clicked");
-          setLastEvent("Primary button clicked");
-        });
-
-        // Call ready action to signal frame is ready
-        console.log("Calling ready");
-        try {
-          await sdk.actions.ready({});
-        } catch (readyError) {
-          console.error("Error calling ready:", readyError);
-        }
-
-        // Set up MIPD Store for wallet integration
-        try {
-          const store = createStore();
-          store.subscribe((providerDetails) => {
-            console.log("PROVIDER DETAILS", providerDetails);
-          });
-        } catch (mipdError) {
-          console.error("Error initializing MIPD store:", mipdError);
+        // Call ready action to signal frame is ready if in Mini App context
+        if (isFarcasterMiniApp) {
+          console.log("Calling ready (Mini App detected)");
+          try {
+            await sdk.actions.ready({});
+            console.log("Ready called successfully");
+          } catch (readyError) {
+            console.error("Error calling ready:", readyError);
+          }
         }
       } catch (error) {
         console.error("Error initializing Frame SDK:", error);
@@ -151,7 +153,6 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
 
     if (typeof window !== 'undefined' && !isSDKLoaded) {
       console.log("Loading Frame SDK");
-      setIsSDKLoaded(true);
       load();
 
       return () => {

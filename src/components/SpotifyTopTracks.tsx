@@ -4,6 +4,8 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '~/lib/stores/authStore';
 import { SpotifyImage } from './SpotifyImage';
+import { useFrame } from './providers/FrameProvider';
+import sdk from "@farcaster/frame-sdk";
 
 type TimeRange = 'short_term' | 'medium_term' | 'long_term';
 
@@ -11,8 +13,9 @@ export function SpotifyTopTracks() {
     const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('medium_term');
     const [isExpanded, setIsExpanded] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const { isMiniApp } = useFrame();
 
-    // Acessar estado do Zustand
+    // Access Zustand state
     const {
         topTracks,
         isLoadingTracks,
@@ -23,14 +26,14 @@ export function SpotifyTopTracks() {
         accessToken
     } = useAuthStore();
 
-    // Rótulos amigáveis para períodos de tempo
+    // Friendly labels for time periods
     const timeRangeLabels = {
         short_term: 'Last 4 Weeks',
         medium_term: 'Last 6 Months',
         long_term: 'All Time'
     };
 
-    // Buscar faixas principais quando o componente for montado ou quando as dependências mudarem
+    // Fetch top tracks when component mounts or dependencies change
     useEffect(() => {
         if (isAuthenticated && accessToken && !isExpired() &&
             topTracks[selectedTimeRange].length === 0 &&
@@ -39,24 +42,49 @@ export function SpotifyTopTracks() {
         }
     }, [selectedTimeRange, accessToken, isAuthenticated, isExpired, fetchTopTracks, topTracks, isLoadingTracks]);
 
-    // Manipulador para alterar o período de tempo
+    // Handler for changing the time period
     const handleTimeRangeChange = (timeRange: TimeRange) => {
         setSelectedTimeRange(timeRange);
 
-        // Buscar dados se ainda não estiverem carregados
+        // Fetch data if not already loaded
         if (topTracks[timeRange].length === 0 && !isLoadingTracks[timeRange]) {
             fetchTopTracks(timeRange);
         }
     };
 
-    // Alternar visualização expandida
+    // Toggle expanded view
     const toggleExpanded = () => {
         setIsExpanded(!isExpanded);
     };
 
-    // Manipulador para atualizar
+    // Handler for refreshing
     const handleRefresh = () => {
         fetchTopTracks(selectedTimeRange);
+    };
+
+    // Handler for sharing top tracks
+    const handleShareTopTracks = () => {
+        if (topTracks[selectedTimeRange].length === 0) return;
+
+        // Create the share URL
+        const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+        const shareUrl = `${baseUrl}/results?type=top-tracks&timeRange=${selectedTimeRange}`;
+
+        // Share message based on time range
+        const timeRangeText = timeRangeLabels[selectedTimeRange];
+        const shareMessage = `🎵 Check out my top tracks from ${timeRangeText} on Proof of Vibes!`;
+
+        // Determine the appropriate sharing method based on context
+        if (isMiniApp && typeof sdk?.actions?.composeCast === 'function') {
+            // When in Farcaster mini app, use composeCast
+            sdk.actions.composeCast({
+                text: shareMessage,
+                embeds: [shareUrl]
+            });
+        } else {
+            // On web, open in a new tab
+            window.open(shareUrl, '_blank');
+        }
     };
 
     const tracksToShow = topTracks[selectedTimeRange] || [];
@@ -66,6 +94,13 @@ export function SpotifyTopTracks() {
             <div className="flex justify-between items-center mb-3">
                 <h3 className="text-sm font-medium">Your Top Tracks</h3>
                 <div className="flex space-x-2">
+                    <button
+                        onClick={handleShareTopTracks}
+                        className="text-xs text-purple-400 hover:text-purple-300"
+                        disabled={isLoadingTracks[selectedTimeRange] || tracksToShow.length === 0}
+                    >
+                        Share
+                    </button>
                     <button
                         onClick={handleRefresh}
                         className="text-xs text-purple-400 hover:text-purple-300"
@@ -82,14 +117,14 @@ export function SpotifyTopTracks() {
                 </div>
             </div>
 
-            {/* Seletor de período de tempo */}
+            {/* Time period selector */}
             <div className="flex space-x-2 mb-3 text-xs">
                 {Object.entries(timeRangeLabels).map(([range, label]) => (
                     <button
                         key={range}
                         className={`px-2 py-1 rounded ${selectedTimeRange === range
-                                ? 'bg-purple-700 text-white'
-                                : 'bg-purple-900/50 text-gray-300 hover:bg-purple-800/50'
+                            ? 'bg-purple-700 text-white'
+                            : 'bg-purple-900/50 text-gray-300 hover:bg-purple-800/50'
                             }`}
                         onClick={() => handleTimeRangeChange(range as TimeRange)}
                         disabled={isLoadingTracks[range as TimeRange]}
@@ -99,14 +134,14 @@ export function SpotifyTopTracks() {
                 ))}
             </div>
 
-            {/* Exibição de erro */}
+            {/* Error display */}
             {error && (
                 <div className="mb-3 p-2 text-sm bg-red-900/30 text-red-200 rounded-md">
                     {error}
                 </div>
             )}
 
-            {/* Estado de carregamento */}
+            {/* Loading state */}
             {isLoadingTracks[selectedTimeRange] ? (
                 <div className="animate-pulse space-y-2">
                     {[...Array(4)].map((_, i) => (
@@ -114,16 +149,16 @@ export function SpotifyTopTracks() {
                     ))}
                 </div>
             ) : (
-                /* Lista de faixas */
+                /* Track list */
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
                     {tracksToShow.length === 0 ? (
                         <div className="text-center text-gray-400 p-4">
-                            <p>Nenhuma faixa encontrada para este período</p>
+                            <p>No tracks found for this period</p>
                             <button
                                 onClick={() => fetchTopTracks(selectedTimeRange)}
                                 className="mt-2 text-sm text-purple-400 hover:text-purple-300"
                             >
-                                Tentar novamente
+                                Try again
                             </button>
                         </div>
                     ) : (

@@ -36,8 +36,7 @@ export function getSecretEnvVars() {
   return { seedPhrase, fid };
 }
 
-export async function getFarcasterMetadata(): Promise<FrameMetadata> {
-  // First check for FRAME_METADATA in .env and use that if it exists
+export async function getFarcasterMetadata(): Promise<FrameMetadata> {  
   if (process.env.FRAME_METADATA) {
     try {
       const metadata = JSON.parse(process.env.FRAME_METADATA);
@@ -103,13 +102,13 @@ export async function getFarcasterMetadata(): Promise<FrameMetadata> {
     accountAssociation,
     frame: {
       version: "1",
-      name: process.env.NEXT_PUBLIC_FRAME_NAME || "Frames v2 Demo",
+      name: process.env.NEXT_PUBLIC_FRAME_NAME || "Timbra",
       iconUrl: `${appUrl}/icon.png`,
       homeUrl: appUrl,
       imageUrl: `${appUrl}/opengraph-image`,
-      buttonTitle: process.env.NEXT_PUBLIC_FRAME_BUTTON_TEXT || "Launch Frame",
+      buttonTitle: process.env.NEXT_PUBLIC_FRAME_BUTTON_TEXT || "Share your vibe",
       splashImageUrl: `${appUrl}/splash.png`,
-      splashBackgroundColor: "#f7f7f7",
+      splashBackgroundColor: "#8A2BE2",
       webhookUrl,
     },
   };

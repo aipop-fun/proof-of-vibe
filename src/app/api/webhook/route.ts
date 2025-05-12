@@ -1,4 +1,4 @@
-// src/app/api/webhook/route.ts
+// src/app/api/webhook/route.ts (updated)
 import {
   ParseWebhookEvent,
   parseWebhookEvent,
@@ -9,7 +9,7 @@ import {
   deleteUserNotificationDetails,
   setUserNotificationDetails,
 } from "~/lib/kv";
-import { sendFrameNotification } from "~/lib/notifs";
+import { NotificationService } from "~/lib/services/notificationService";
 
 /**
  * Webhook handler for Farcaster Mini App events
@@ -53,6 +53,8 @@ export async function POST(request: NextRequest) {
   const fid = data.fid;
   const event = data.event;
 
+  console.log(`Received event ${event.event} for FID ${fid}`);
+
   // Process different event types
   switch (event.event) {
     case "frame_added":
@@ -62,11 +64,19 @@ export async function POST(request: NextRequest) {
         await setUserNotificationDetails(fid, event.notificationDetails);
 
         // Send a welcome notification
-        await sendFrameNotification({
-          fid,
-          title: "Welcome to Proof of Vibes!",
-          body: "Your music journey just got more social. Connect Spotify to get started.",
-        });
+        // Allow some time for the notification details to be stored and processed
+        setTimeout(async () => {
+          try {
+            await NotificationService.sendNotification({
+              fid,
+              type: 'welcome',
+              data: {}
+            });
+            console.log(`Welcome notification sent to FID ${fid}`);
+          } catch (error) {
+            console.error(`Error sending welcome notification to FID ${fid}:`, error);
+          }
+        }, 2000);
       } else {
         // If no notification details, make sure we don't have any stored
         await deleteUserNotificationDetails(fid);
@@ -76,26 +86,43 @@ export async function POST(request: NextRequest) {
     case "frame_removed":
       // The user has removed the Mini App - clean up notification details
       await deleteUserNotificationDetails(fid);
+      console.log(`User FID ${fid} removed the frame`);
       break;
 
     case "notifications_enabled":
       // The user has enabled notifications
-      await setUserNotificationDetails(fid, event.notificationDetails);
+      if (event.notificationDetails) {
+        await setUserNotificationDetails(fid, event.notificationDetails);
 
-      // Send a confirmation notification
-      await sendFrameNotification({
-        fid,
-        title: "Notifications Enabled",
-        body: "You'll now receive updates when friends share music or interact with yours!",
-      });
+        // Send a confirmation notification
+        setTimeout(async () => {
+          try {
+            await NotificationService.sendNotification({
+              fid,
+              type: 'welcome',
+              data: {
+                reEnabled: true
+              }
+            });
+            console.log(`Notifications re-enabled notification sent to FID ${fid}`);
+          } catch (error) {
+            console.error(`Error sending notification re-enabled notification to FID ${fid}:`, error);
+          }
+        }, 2000);
+      }
       break;
 
     case "notifications_disabled":
       // The user has disabled notifications - clean up notification details
       await deleteUserNotificationDetails(fid);
+      console.log(`User FID ${fid} disabled notifications`);
       break;
   }
 
   // Return success response
-  return Response.json({ success: true });
+  return Response.json({
+    success: true,
+    event: event.event,
+    fid
+  });
 }

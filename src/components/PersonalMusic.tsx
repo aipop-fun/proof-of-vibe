@@ -5,19 +5,13 @@ import { useState, useEffect } from "react";
 import { useAuthStore } from "~/lib/stores/authStore";
 import { SpotifyTopTracks } from "./SpotifyTopTracks";
 import { SpotifyImage } from "./SpotifyImage";
-
-interface CurrentTrack {
-    id: string;
-    title: string;
-    artist: string;
-    album?: string;
-    coverArt?: string;
-    duration: string;
-    currentTime: string;
-}
+import { Button } from "./ui/Button";
+import { useFrame } from "./providers/FrameProvider";
+import sdk from "@farcaster/frame-sdk";
 
 export function PersonalMusic() {
     const [error, setError] = useState<string | null>(null);
+    const { isMiniApp } = useFrame();
 
     // Acesso ao Zustand store
     const {
@@ -69,6 +63,39 @@ export function PersonalMusic() {
         }
     };
 
+    // Handle sharing currently playing track
+    const handleShareCurrentlyPlaying = () => {
+        if (!currentlyPlaying) return;
+
+        // Create the share URL
+        const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+        const shareUrl = `${baseUrl}/results?type=currently-playing`;
+
+        // Determine the appropriate sharing method based on context
+        if (isMiniApp && typeof sdk?.actions?.composeCast === 'function') {
+            // When in Farcaster mini app, use composeCast
+            sdk.actions.composeCast({
+                text: `🎵 I'm currently listening to ${currentlyPlaying.title} by ${currentlyPlaying.artist} on Proof of Vibes!`,
+                embeds: [shareUrl]
+            });
+        } else {
+            // On web, open in a new tab
+            window.open(shareUrl, '_blank');
+        }
+    };
+
+    // Handle viewing results page
+    const handleViewResults = () => {
+        const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+        const resultsUrl = `${baseUrl}/results?type=top-tracks&timeRange=medium_term`;
+
+        if (isMiniApp && typeof sdk?.actions?.openUrl === 'function') {
+            sdk.actions.openUrl(resultsUrl);
+        } else {
+            window.open(resultsUrl, '_blank');
+        }
+    };
+
     // Se não estiver autenticado com Spotify, não mostrar nada
     if (!isAuthenticated || !spotifyId) {
         return null;
@@ -76,7 +103,15 @@ export function PersonalMusic() {
 
     return (
         <div className="p-4 bg-purple-800/20 rounded-lg mb-6">
-            <h2 className="text-lg font-semibold mb-3">Your Music</h2>
+            <div className="flex justify-between items-center mb-3">
+                <h2 className="text-lg font-semibold">Your Music</h2>
+                <Button
+                    onClick={handleViewResults}
+                    className="text-xs px-3 py-1 bg-purple-600 hover:bg-purple-700"
+                >
+                    View Results
+                </Button>
+            </div>
 
             {/* Exibição de erro */}
             {error && (
@@ -94,7 +129,15 @@ export function PersonalMusic() {
                     {/* Faixa atual */}
                     {currentlyPlaying ? (
                         <div className="mb-4">
-                            <p className="text-sm text-green-400 mb-1">Currently Playing</p>
+                            <div className="flex justify-between items-start">
+                                <p className="text-sm text-green-400 mb-1">Currently Playing</p>
+                                <button
+                                    onClick={handleShareCurrentlyPlaying}
+                                    className="text-xs text-purple-400 hover:text-purple-300"
+                                >
+                                    Share
+                                </button>
+                            </div>
                             <div className="flex items-center">
                                 <div className="relative w-16 h-16 mr-3 flex-shrink-0">
                                     <SpotifyImage
@@ -129,7 +172,7 @@ export function PersonalMusic() {
                             </div>
                         </div>
                     ) : (
-                        <p className="text-sm text-gray-400 mb-3">Não está tocando nada no momento</p>
+                        <p className="text-sm text-gray-400 mb-3">Not playing anything at the moment</p>
                     )}
 
                     {/* Componente de faixas principais */}

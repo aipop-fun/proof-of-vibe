@@ -1,8 +1,3 @@
-// src/components/Dashboard.tsx
-/* eslint-disable  @typescript-eslint/no-unused-vars, @typescript-eslint/ban-ts-comment */
-
-//@ts-nocheck
-// src/components/Dashboard.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -12,12 +7,13 @@ import { FriendsListening } from "./FriendsListening";
 import { TopWeeklyTracks } from "./TopWeeklyTracks";
 import { Button } from "~/components/ui/Button";
 import sdk from "@farcaster/frame-sdk";
-import { AccountOnboarding } from "./AccountOnboarding"; // Import the new onboarding component
+import { AccountOnboarding } from "./AccountOnboarding";
 import { AccountLinking } from "./AccountLinking";
-import { AccountStatus } from "./AccountStatus"; // Import the status component
+import { AccountStatus } from "./AccountStatus";
 import { PersonalMusic } from "./PersonalMusic";
 import { useAuthStore } from "~/lib/stores/authStore";
 import { useFrame } from "./providers/FrameProvider";
+import { AddFrameButton } from "./AddFrameButton"; 
 
 export function Dashboard() {
   const {
@@ -31,9 +27,10 @@ export function Dashboard() {
   const [tab, setTab] = useState<"current" | "weekly">("current");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showAccountSetup, setShowAccountSetup] = useState(false);
+  const [sentWelcome, setSentWelcome] = useState(false);
 
   // Get context from FrameProvider
-  const { isMiniApp, context } = useFrame();
+  const { isMiniApp, context, added, notificationDetails } = useFrame();
 
   // Use Zustand store
   const {
@@ -60,6 +57,7 @@ export function Dashboard() {
       if (isMiniApp && typeof sdk?.actions?.ready === 'function') {
         try {
           await sdk.actions.ready();
+          console.log("App is ready and splash screen has been hidden");
         } catch (readyError) {
           console.error("Error calling ready in Dashboard:", readyError);
         }
@@ -68,6 +66,38 @@ export function Dashboard() {
 
     initializeInMiniApp();
   }, [isMiniApp]);
+
+  // Send welcome notification when app is added
+  useEffect(() => {
+    const sendWelcomeNotification = async () => {
+      if (!added || !notificationDetails || !context?.user?.fid || sentWelcome) return;
+
+      try {
+        const response = await fetch("/api/send-notification", {
+          method: "POST",
+          mode: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fid: context.user.fid,
+            notificationDetails,
+          }),
+        });
+
+        if (response.ok) {
+          console.log("Welcome notification sent successfully");
+          setSentWelcome(true);
+        } else {
+          console.error("Failed to send welcome notification");
+        }
+      } catch (error) {
+        console.error("Error sending notification:", error);
+      }
+    };
+
+    if (added && notificationDetails && !sentWelcome) {
+      sendWelcomeNotification();
+    }
+  }, [added, notificationDetails, context, sentWelcome]);
 
   const handleSignOut = async () => {
     // Clear the Zustand store
@@ -81,11 +111,16 @@ export function Dashboard() {
   };
 
   const handleShare = () => {
-    if (typeof sdk?.actions?.openUrl === 'function') {
-      sdk.actions.openUrl("https://warpcast.com/~/compose?text=Check%20out%20what%20my%20friends%20are%20listening%20to%20on%20Proof%20of%20Vibes!");
+    if (typeof sdk?.actions?.composeCast === 'function') {
+      sdk.actions.composeCast({
+        text: "🎵 Check out Proof of Vibes! Connect your Spotify and share your music taste with friends on Farcaster.",
+        embeds: [process.env.NEXT_PUBLIC_URL || "https://timbra.aipop.fun"]
+      });
+    } else if (typeof sdk?.actions?.openUrl === 'function') {
+      sdk.actions.openUrl("https://warpcast.com/~/compose?text=Check%20out%20Proof%20of%20Vibes!%20Connect%20your%20Spotify%20and%20share%20your%20music%20taste%20with%20friends%20on%20Farcaster.%20%F0%9F%8E%B5");
     } else {
       // Fallback for regular web browser
-      window.open("https://warpcast.com/~/compose?text=Check%20out%20what%20my%20friends%20are%20listening%20to%20on%20Proof%20of%20Vibes!", "_blank");
+      window.open("https://warpcast.com/~/compose?text=Check%20out%20Proof%20of%20Vibes!%20Connect%20your%20Spotify%20and%20share%20your%20music%20taste%20with%20friends%20on%20Farcaster.%20%F0%9F%8E%B5", "_blank");
     }
   };
 
@@ -132,6 +167,9 @@ export function Dashboard() {
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold">Proof of Vibes</h1>
           <div className="flex items-center gap-2">
+            {/* Add Frame Button - show only in Mini App context */}
+            {isMiniApp && <AddFrameButton />}
+
             <button
               onClick={handleRefresh}
               disabled={isRefreshing || loading.friends || loading.weekly}
