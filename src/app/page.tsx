@@ -1,4 +1,4 @@
-/* eslint-disable  @typescript-eslint/no-unused-vars */
+/* eslint-disable  @typescript-eslint/no-unused-vars, react/no-unescaped-entities */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -17,7 +17,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
 
   // Use our Zustand auth store
-  const { isAuthenticated, isExpired, accessToken } = useAuthStore();
+  const { isAuthenticated, isExpired, accessToken, isLinked } = useAuthStore();
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -62,6 +62,20 @@ export default function App() {
         <div className="text-center max-w-md w-full">
           <h1 className="text-3xl font-bold mb-6">Proof of Vibes</h1>
           <p className="mb-8">Connect your Spotify and Farcaster accounts to share your music with friends on Farcaster.</p>
+          <div className="mb-8 bg-purple-800/30 p-4 rounded-lg">
+            <h2 className="text-xl font-semibold mb-2">Verify Music Authenticity</h2>
+            <p className="mb-4 text-sm text-gray-300">
+              Proof of Vibes now uses TLSNotary to create verifiable proofs of your Spotify data.
+              You can verify other users' music without requiring access to their accounts.
+            </p>
+            <Button
+              onClick={() => router.push('/verify-proof')}
+              className="bg-purple-600 hover:bg-purple-700 w-full mb-2"
+            >
+              Verify Music Proofs
+            </Button>
+          </div>
+
           <Button
             onClick={() => router.push('/auth/signin')}
             className="w-full bg-purple-600 hover:bg-purple-700 py-3"
@@ -86,6 +100,17 @@ export default function App() {
     >
       <MusicProvider>
         <Dashboard />
+        {isAuthenticated && isLinked && (
+          <div className="fixed bottom-20 right-4">
+            <Button
+              onClick={() => router.push('/generate-proof')}
+              className="rounded-full h-12 w-12 flex items-center justify-center bg-purple-600"
+              title="Generate Proof"
+            >
+              🔐
+            </Button>
+          </div>
+        )}
       </MusicProvider>
     </div>
   );

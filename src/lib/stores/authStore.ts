@@ -45,6 +45,19 @@ interface AuthState {
     loadingCurrentTrack: boolean;
     error: string | null;
 
+    connectedUsers: {
+        fid: number;
+        spotifyId?: string;
+        username?: string;
+        displayName?: string;
+        lastSeen?: number;
+    }[];
+    isLoadingConnections: boolean;
+
+    fetchConnectedUsers: () => Promise<void>;
+    fetchUserTopTracks: (fid: number) => Promise<void>;
+    userTopTracks: Record<number, SpotifyTrack[]>;
+
     // Account linking actions
     setLinkedStatus: (status: boolean) => void;
     checkLinkedStatus: () => Promise<void>;
@@ -112,6 +125,109 @@ export const useAuthStore = create<AuthState>()(
             },
             loadingCurrentTrack: false,
             error: null,
+
+            connectedUsers: [],
+            isLoadingConnections: false,
+            userTopTracks: {},
+
+            fetchConnectedUsers: async () => {
+                const state = get();
+
+                // Don't fetch if not authenticated
+                if (!state.isAuthenticated || !state.fid) {
+                    return;
+                }
+
+                set({ isLoadingConnections: true });
+
+                try {
+                    // In a real implementation, this would call an API endpoint
+                    // to fetch connected users from a database
+
+                    // For the demo, we'll simulate some connected users
+                    const mockConnectedUsers = [
+                        {
+                            fid: 1245,
+                            username: "0xWave",
+                            displayName: "0xWave",
+                            lastSeen: Date.now() - 3 * 60 * 1000
+                        },
+                        {
+                            fid: 5678,
+                            username: "cryptokate",
+                            displayName: "Crypto Kate",
+                            lastSeen: Date.now() - 15 * 60 * 1000
+                        },
+                        {
+                            fid: 9012,
+                            username: "web3builder",
+                            displayName: "Web3 Builder",
+                            lastSeen: Date.now() - 1 * 60 * 1000
+                        }
+                    ];
+
+                    // Simulate API call
+                    setTimeout(() => {
+                        set({
+                            connectedUsers: mockConnectedUsers,
+                            isLoadingConnections: false
+                        });
+                    }, 1500);
+
+                } catch (error) {
+                    console.error("Error fetching connected users:", error);
+                    set({
+                        error: "Failed to load connected users",
+                        isLoadingConnections: false
+                    });
+                }
+            },
+
+            fetchUserTopTracks: async (fid) => {
+                const state = get();
+
+                // Don't fetch if not authenticated
+                if (!state.isAuthenticated) {
+                    return;
+                }
+
+                try {
+                    // In a real implementation, this would call an API endpoint
+                    // to fetch a user's top tracks based on their FID
+
+                    // For the demo, we'll simulate some top tracks
+                    const generateMockTracks = (fid: number): SpotifyTrack[] => {
+                        const trackCount = 5 + Math.floor(Math.random() * 5);
+                        return Array(trackCount).fill(null).map((_, index) => ({
+                            id: `user-${fid}-track-${index}`,
+                            title: `Track ${index + 1} for User ${fid}`,
+                            artist: `Artist ${Math.floor(Math.random() * 10)}`,
+                            album: `Album ${Math.floor(Math.random() * 5)}`,
+                            coverArt: '/api/placeholder/60/60',
+                            popularity: Math.floor(Math.random() * 100),
+                            // Add a timestamp to show these are current
+                            timestamp: Date.now() - Math.floor(Math.random() * 60 * 60 * 1000)
+                        }));
+                    };
+
+                    // Simulate API call
+                    const mockTracks = generateMockTracks(fid);
+
+                    // Update store with the tracks
+                    set(state => ({
+                        userTopTracks: {
+                            ...state.userTopTracks,
+                            [fid]: mockTracks
+                        }
+                    }));
+
+                } catch (error) {
+                    console.error(`Error fetching top tracks for user ${fid}:`, error);
+                    set({
+                        error: `Failed to load top tracks for user ${fid}`
+                    });
+                }
+            },
 
             // Account linking actions
             setLinkedStatus: (status) => set({ isLinked: status }),

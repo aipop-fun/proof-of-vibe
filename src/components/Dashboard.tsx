@@ -14,8 +14,12 @@ import { PersonalMusic } from "./PersonalMusic";
 import { useAuthStore } from "~/lib/stores/authStore";
 import { useFrame } from "./providers/FrameProvider";
 import { AddFrameButton } from "./AddFrameButton"; 
+import { ConnectedUsers } from "./ConnectedUsers";
+import { useRouter } from "next/navigation";
+
 
 export function Dashboard() {
+  const router = useRouter()
   const {
     loading = { friends: false, weekly: false },
     error = null,
@@ -167,7 +171,15 @@ export function Dashboard() {
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold">Proof of Vibes</h1>
           <div className="flex items-center gap-2">
-            {/* Add Frame Button - show only in Mini App context */}
+            {isAuthenticated && isLinked && (
+              <Button
+                onClick={() => router.push('/generate-proof')}
+                className="text-xs px-3 py-1 bg-purple-600 hover:bg-purple-700"
+              >
+                Verify Vibes
+              </Button>
+            )}
+            
             {isMiniApp && <AddFrameButton />}
 
             <button
@@ -237,6 +249,13 @@ export function Dashboard() {
       <div className="px-4">
         <PersonalMusic />
       </div>
+
+      {/* Connected Users Section - only show when user is fully linked */}
+      {isAuthenticated && isLinked && (
+        <div className="px-4 mb-4">
+          <ConnectedUsers />
+        </div>
+      )}
 
       {/* Tab navigation - only show in standard view, not in mini app */}
       {!isMiniApp && (
