@@ -1,4 +1,4 @@
-/* eslint-disable  @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+// src/components/PersonalMusic.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -12,8 +12,9 @@ import sdk from "@farcaster/frame-sdk";
 export function PersonalMusic() {
     const [error, setError] = useState<string | null>(null);
     const { isMiniApp } = useFrame();
+    const pollingInterval = 30000; // 30 seconds
 
-    // Acesso ao Zustand store
+    // Access the auth store
     const {
         currentlyPlaying,
         loadingCurrentTrack,
@@ -21,31 +22,48 @@ export function PersonalMusic() {
         isAuthenticated,
         spotifyId,
         isExpired,
-        accessToken
+        accessToken,
+        refreshTokenIfNeeded
     } = useAuthStore();
 
-    // Buscar dados quando o componente montar
+    // Fetch data when component mounts and set up polling
     useEffect(() => {
-        if (isAuthenticated && accessToken && !isExpired()) {
-            // Busca inicial
-            fetchCurrentlyPlaying();
+        const fetchData = async () => {
+            try {
+                // Check if token is valid and refresh if needed
+                const tokenValid = await refreshTokenIfNeeded();
 
-            // Configurar polling a cada 30 segundos
-            const intervalId = setInterval(() => {
-                if (isAuthenticated && !isExpired()) {
-                    fetchCurrentlyPlaying();
+                if (tokenValid && accessToken) {
+                    await fetchCurrentlyPlaying();
                 }
-            }, 30000);
+            } catch (err) {
+                console.error("Error fetching currently playing track:", err);
+                setError(err instanceof Error ? err.message : "Failed to fetch music data");
+            }
+        };
 
-            // Limpeza ao desmontar
-            return () => clearInterval(intervalId);
+        // Initial fetch
+        if (isAuthenticated && spotifyId) {
+            fetchData();
         }
-    }, [accessToken, isAuthenticated, isExpired, fetchCurrentlyPlaying]);
 
-    // Função auxiliar para calcular a porcentagem de progresso
-    const calculateProgress = (current: string, total: string): number => {
+        // Set up polling interval
+        const intervalId = setInterval(() => {
+            if (isAuthenticated && spotifyId && !isExpired()) {
+                fetchData();
+            }
+        }, pollingInterval);
+
+        // Clean up on unmount
+        return () => clearInterval(intervalId);
+    }, [isAuthenticated, spotifyId, accessToken, isExpired, fetchCurrentlyPlaying, refreshTokenIfNeeded]);
+
+    // Calculate progress percentage for progress bar
+    const calculateProgress = (current?: string, total?: string): number => {
         try {
-            // Converter formato mm:ss para segundos
+            if (!current || !total) return 0;
+
+            // Convert mm:ss format to seconds
             const currentParts = current.split(':');
             const totalParts = total.split(':');
 
@@ -58,9 +76,15 @@ export function PersonalMusic() {
 
             return (currentSeconds / totalSeconds) * 100;
         } catch (error) {
-            console.error('Erro ao calcular progresso:', error);
+            console.error('Error calculating progress:', error);
             return 0;
         }
+    };
+
+    // Alternative progress calculation using raw milliseconds when available
+    const calculateProgressFromMs = (current?: number, total?: number): number => {
+        if (!current || !total || total === 0) return 0;
+        return (current / total) * 100;
     };
 
     // Handle sharing currently playing track
@@ -96,7 +120,7 @@ export function PersonalMusic() {
         }
     };
 
-    // Se não estiver autenticado com Spotify, não mostrar nada
+    // If not authenticated with Spotify, don't show anything
     if (!isAuthenticated || !spotifyId) {
         return null;
     }
@@ -113,7 +137,7 @@ export function PersonalMusic() {
                 </Button>
             </div>
 
-            {/* Exibição de erro */}
+            {/* Error display */}
             {error && (
                 <div className="mb-3 p-2 text-sm bg-red-900/30 text-red-200 rounded-md">
                     {error}
@@ -126,7 +150,7 @@ export function PersonalMusic() {
                 </div>
             ) : (
                 <>
-                    {/* Faixa atual */}
+                    {/* Currently playing track */}
                     {currentlyPlaying ? (
                         <div className="mb-4">
                             <div className="flex justify-between items-start">
@@ -149,18 +173,18 @@ export function PersonalMusic() {
                                         style={{ objectFit: 'cover' }}
                                     />
                                 </div>
-                                <div>
-                                    <p className="font-medium">{currentlyPlaying.title}</p>
-                                    <p className="text-sm text-gray-300">{currentlyPlaying.artist}</p>
+                                <div className="flex-grow min-w-0">
+                                    <p className="font-medium truncate">{currentlyPlaying.title}</p>
+                                    <p className="text-sm text-gray-300 truncate">{currentlyPlaying.artist}</p>
                                     <div className="flex items-center mt-1">
-                                        <div className="w-32 h-1 bg-gray-700 rounded-full mr-2">
+                                        <div className="w-full max-w-32 h-1 bg-gray-700 rounded-full mr-2">
                                             <div
                                                 className="h-1 bg-green-500 rounded-full"
                                                 style={{
-                                                    width: `${calculateProgress(
-                                                        currentlyPlaying.currentTime ?? '0:00',
-                                                        currentlyPlaying.duration ?? '0:00'
-                                                    )}%`
+                                                    width: `${currentlyPlaying.progressMs && currentlyPlaying.durationMs
+                                                            ? calculateProgressFromMs(currentlyPlaying.progressMs, currentlyPlaying.durationMs)
+                                                            : calculateProgress(currentlyPlaying.currentTime, currentlyPlaying.duration)
+                                                        }%`
                                                 }}
                                             ></div>
                                         </div>
@@ -175,7 +199,7 @@ export function PersonalMusic() {
                         <p className="text-sm text-gray-400 mb-3">Not playing anything at the moment</p>
                     )}
 
-                    {/* Componente de faixas principais */}
+                    {/* Top tracks component */}
                     <SpotifyTopTracks />
                 </>
             )}

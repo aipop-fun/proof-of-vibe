@@ -119,6 +119,21 @@ export async function createOrUpdateUser({
   }
 }
 
+export async function getUsersWithSpotify() {
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('*')
+    .not('spotify_id', 'is', null)
+    .order('updated_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching users with Spotify:', error);
+    return [];
+  }
+
+  return data;
+}
+
 export async function linkAccounts(fid: number, spotifyId: string) {
   // First check if these accounts are already linked
   const fidUser = await getUserByFid(fid);

@@ -1,56 +1,79 @@
+// src/app/api/image-proxy/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
- * API route que serve como proxy para buscar imagens de domínios externos
- * Útil para contornar restrições de CORS e limitações de domínio do Next.js
+ * API route that serves as a proxy for fetching images from external domains
+ * Helps overcome CORS restrictions and domain limitations in Next.js
  */
 export async function GET(request: NextRequest) {
-    // Obter URL da imagem dos parâmetros da query
+    // Get image URL from query parameters
     const { searchParams } = new URL(request.url);
     const imageUrl = searchParams.get('url');
 
-    // Se nenhuma URL for fornecida, retornar erro
+    // If no URL is provided, return error
     if (!imageUrl) {
-        return new NextResponse('URL da imagem não fornecida', { status: 400 });
+        return new NextResponse('Image URL not provided', { status: 400 });
     }
 
     try {
-        // Validar URL (básico)
+        // Validate URL format
         const url = new URL(imageUrl);
 
-        // Verificar se é uma URL do Spotify (aumente a segurança se necessário)
-        const isSpotifyUrl = url.hostname.includes('scdn.co') ||
-            url.hostname.includes('spotifycdn.com');
+        // Security check: only allow Spotify CDN domains
+        const allowedDomains = [
+            'i.scdn.co',
+            'mosaic.scdn.co',
+            'image-cdn-fa.spotifycdn.com',
+            'image-cdn-ak.spotifycdn.com',
+            'image-cdn-tp.spotifycdn.com',
+            'lineup-images.scdn.co',
+            'seeded-session-images.scdn.co',
+            'dailymix-images.scdn.co',
+            'newjams-images.scdn.co',
+            'thisis-images.scdn.co',
+            'wrapped-images.spotifycdn.com'
+        ];
 
-        if (!isSpotifyUrl) {
-            return new NextResponse('Apenas URLs do Spotify são permitidas', { status: 403 });
+        const isAllowedDomain = allowedDomains.some(domain =>
+            url.hostname.endsWith(domain) || url.hostname === domain
+        );
+
+        if (!isAllowedDomain) {
+            return new NextResponse('Only Spotify CDN URLs are allowed', { status: 403 });
         }
 
-        // Buscar a imagem
-        const response = await fetch(imageUrl);
+        // Fetch the image
+        const response = await fetch(imageUrl, {
+            headers: {
+                // Pass a user-agent to avoid being blocked
+                'User-Agent': 'Timbra-Image-Proxy/1.0',
+            },
+        });
 
         if (!response.ok) {
-            throw new Error(`Falha ao buscar imagem: ${response.statusText}`);
+            throw new Error(`Failed to fetch image: ${response.statusText}`);
         }
 
-        // Obter os dados da imagem
+        // Get the image data as an array buffer
         const imageData = await response.arrayBuffer();
 
-        // Detectar o tipo de conteúdo ou usar o do response
+        // Detect content type from response headers or use fallback
         const contentType = response.headers.get('content-type') || 'image/jpeg';
 
-        // Criar uma nova resposta com os dados da imagem
+        // Create response with appropriate headers
         return new NextResponse(imageData, {
             headers: {
                 'Content-Type': contentType,
-                'Cache-Control': 'public, max-age=86400', // Cache por 24 horas
+                'Cache-Control': 'public, max-age=86400', // Cache for 24 hours
+                'Access-Control-Allow-Origin': '*', // CORS headers
+                'Access-Control-Allow-Methods': 'GET',
             }
         });
 
     } catch (error) {
-        console.error('Erro no proxy de imagem:', error);
+        console.error('Error in image proxy:', error);
         return new NextResponse(
-            error instanceof Error ? error.message : 'Erro ao processar imagem',
+            error instanceof Error ? error.message : 'Error processing image',
             { status: 500 }
         );
     }

@@ -1,24 +1,31 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/ban-ts-comment */
-//@ts-nocheck
-
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { checkAccountsLinked } from '~/lib/services/accountLinking';
+import {
+    getCurrentlyPlaying,
+    getTopTracks,
+    getUserProfile,
+    validateToken,
+    refreshAccessToken
+} from '~/lib/spotify-api-service';
 
 // Types for Spotify tracks
 interface SpotifyTrack {
-    currentTime?: string;
     id: string;
     title: string;
     artist: string;
     album?: string;
     coverArt?: string;
     duration?: string;
+    currentTime?: string;
     popularity?: number;
-    timeRange?: TimeRange;
+    uri?: string;
+    progressMs?: number;
+    durationMs?: number;
+    isPlaying?: boolean;
 }
 
-type TimeRange = 'short_term' | 'medium_term' | 'long_term';
+export type TimeRange = 'short_term' | 'medium_term' | 'long_term';
 
 // Main auth store state interface
 interface AuthState {
@@ -53,17 +60,14 @@ interface AuthState {
         lastSeen?: number;
     }[];
     isLoadingConnections: boolean;
-
-    fetchConnectedUsers: () => Promise<void>;
-    fetchUserTopTracks: (fid: number) => Promise<void>;
     userTopTracks: Record<number, SpotifyTrack[]>;
 
-    // Account linking actions
+    // Functions
+    fetchConnectedUsers: () => Promise<void>;
+    fetchUserTopTracks: (fid: number) => Promise<void>;
     setLinkedStatus: (status: boolean) => void;
     checkLinkedStatus: () => Promise<void>;
     setLinkingError: (error: string | null) => void;
-
-    // Auth actions
     setSpotifyAuth: (data: {
         accessToken: string;
         refreshToken: string;
@@ -79,22 +83,13 @@ interface AuthState {
     setFarcasterAuth: (data: { fid: number }) => Promise<void>;
     clearAuth: () => void;
     isExpired: () => boolean;
-
-    // Music data actions
+    refreshTokenIfNeeded: () => Promise<boolean>;
     fetchTopTracks: (timeRange: TimeRange) => Promise<void>;
     fetchCurrentlyPlaying: () => Promise<void>;
+    fetchSpotifyProfile: () => Promise<void>;
     clearMusicData: () => void;
     setError: (error: string | null) => void;
 }
-
-// Helper function to format duration
-const formatDuration = (ms: number): string => {
-    if (!ms) return '0:00';
-    const totalSeconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-};
 
 // Create store with persistence
 export const useAuthStore = create<AuthState>()(
@@ -114,9 +109,9 @@ export const useAuthStore = create<AuthState>()(
             // Initial music data state
             currentlyPlaying: null,
             topTracks: {
-                short_term: [], // Weekly (approximately last 4 weeks)
-                medium_term: [], // Monthly (approximately last 6 months)
-                long_term: [], // Yearly (calculated from several years of data)
+                short_term: [], // Last 4 weeks
+                medium_term: [], // Last 6 months
+                long_term: [], // All time
             },
             isLoadingTracks: {
                 short_term: false,
@@ -126,14 +121,14 @@ export const useAuthStore = create<AuthState>()(
             loadingCurrentTrack: false,
             error: null,
 
+            // Connected users state
             connectedUsers: [],
             isLoadingConnections: false,
             userTopTracks: {},
 
+            // Functions for fetching data from backend/API
             fetchConnectedUsers: async () => {
                 const state = get();
-
-                // Don't fetch if not authenticated
                 if (!state.isAuthenticated || !state.fid) {
                     return;
                 }
@@ -141,10 +136,8 @@ export const useAuthStore = create<AuthState>()(
                 set({ isLoadingConnections: true });
 
                 try {
-                    // In a real implementation, this would call an API endpoint
-                    // to fetch connected users from a database
-
-                    // For the demo, we'll simulate some connected users
+                    // In a real app, this would be an API call to get connected users
+                    // For now, we'll simulate with mock data
                     const mockConnectedUsers = [
                         {
                             fid: 1245,
@@ -166,14 +159,12 @@ export const useAuthStore = create<AuthState>()(
                         }
                     ];
 
-                    // Simulate API call
                     setTimeout(() => {
                         set({
                             connectedUsers: mockConnectedUsers,
                             isLoadingConnections: false
                         });
-                    }, 1500);
-
+                    }, 1000);
                 } catch (error) {
                     console.error("Error fetching connected users:", error);
                     set({
@@ -185,42 +176,27 @@ export const useAuthStore = create<AuthState>()(
 
             fetchUserTopTracks: async (fid) => {
                 const state = get();
-
-                // Don't fetch if not authenticated
                 if (!state.isAuthenticated) {
                     return;
                 }
 
                 try {
-                    // In a real implementation, this would call an API endpoint
-                    // to fetch a user's top tracks based on their FID
+                    // This would be a real API call in production
+                    const mockTracks = Array(5).fill(null).map((_, index) => ({
+                        id: `user-${fid}-track-${index}`,
+                        title: `Track ${index + 1} for User ${fid}`,
+                        artist: `Artist ${Math.floor(Math.random() * 10)}`,
+                        album: `Album ${Math.floor(Math.random() * 5)}`,
+                        coverArt: '/api/placeholder/60/60',
+                        popularity: Math.floor(Math.random() * 100),
+                    }));
 
-                    // For the demo, we'll simulate some top tracks
-                    const generateMockTracks = (fid: number): SpotifyTrack[] => {
-                        const trackCount = 5 + Math.floor(Math.random() * 5);
-                        return Array(trackCount).fill(null).map((_, index) => ({
-                            id: `user-${fid}-track-${index}`,
-                            title: `Track ${index + 1} for User ${fid}`,
-                            artist: `Artist ${Math.floor(Math.random() * 10)}`,
-                            album: `Album ${Math.floor(Math.random() * 5)}`,
-                            coverArt: '/api/placeholder/60/60',
-                            popularity: Math.floor(Math.random() * 100),
-                            // Add a timestamp to show these are current
-                            timestamp: Date.now() - Math.floor(Math.random() * 60 * 60 * 1000)
-                        }));
-                    };
-
-                    // Simulate API call
-                    const mockTracks = generateMockTracks(fid);
-
-                    // Update store with the tracks
                     set(state => ({
                         userTopTracks: {
                             ...state.userTopTracks,
                             [fid]: mockTracks
                         }
                     }));
-
                 } catch (error) {
                     console.error(`Error fetching top tracks for user ${fid}:`, error);
                     set({
@@ -229,12 +205,10 @@ export const useAuthStore = create<AuthState>()(
                 }
             },
 
-            // Account linking actions
+            // Account linking functions
             setLinkedStatus: (status) => set({ isLinked: status }),
-
             setLinkingError: (error) => set({ linkingError: error }),
 
-            // Check if accounts are linked in the database
             checkLinkedStatus: async () => {
                 const state = get();
                 if (!state.fid && !state.spotifyId) return;
@@ -247,7 +221,7 @@ export const useAuthStore = create<AuthState>()(
                 }
             },
 
-            // Auth actions
+            // Authentication functions
             setSpotifyAuth: async (data) => {
                 set({
                     accessToken: data.accessToken,
@@ -266,10 +240,10 @@ export const useAuthStore = create<AuthState>()(
             },
 
             setFarcasterAuth: async (data) => {
-                set((state) => ({
+                set({
                     fid: data.fid,
                     isAuthenticated: true,
-                }));
+                });
 
                 // Check if accounts are linked after setting Farcaster auth
                 const state = get();
@@ -288,6 +262,12 @@ export const useAuthStore = create<AuthState>()(
                     isAuthenticated: false,
                     fid: null,
                     isLinked: false,
+                    currentlyPlaying: null,
+                    topTracks: {
+                        short_term: [],
+                        medium_term: [],
+                        long_term: [],
+                    },
                 });
             },
 
@@ -298,17 +278,82 @@ export const useAuthStore = create<AuthState>()(
                 return Date.now() > (state.expiresAt * 1000) - (5 * 60 * 1000);
             },
 
-            // Music data actions
-            fetchTopTracks: async (timeRange) => {
+            refreshTokenIfNeeded: async () => {
                 const state = get();
 
-                // Check authentication
-                if (!state.accessToken || state.isExpired()) {
+                // If not authenticated or no refresh token, can't refresh
+                if (!state.refreshToken) {
+                    return false;
+                }
+
+                // If token is still valid, no need to refresh
+                if (state.accessToken && !state.isExpired()) {
+                    return true;
+                }
+
+                try {
+                    // Attempt to refresh the token
+                    const { accessToken, refreshToken, expiresAt } = await refreshAccessToken(state.refreshToken);
+
+                    set({
+                        accessToken,
+                        refreshToken: refreshToken || state.refreshToken,
+                        expiresAt,
+                        error: null,
+                    });
+
+                    return true;
+                } catch (error) {
+                    console.error('Failed to refresh token:', error);
+                    set({
+                        error: "Your Spotify session has expired. Please sign in again.",
+                        accessToken: null,
+                    });
+
+                    return false;
+                }
+            },
+
+            // Spotify API functions
+            fetchSpotifyProfile: async () => {
+                const state = get();
+                const tokenValid = await state.refreshTokenIfNeeded();
+
+                if (!tokenValid || !state.accessToken) {
+                    return;
+                }
+
+                try {
+                    const profile = await getUserProfile(state.accessToken);
+
+                    set({
+                        spotifyUser: {
+                            id: profile.id,
+                            name: profile.display_name || profile.id,
+                            email: profile.email,
+                            image: profile.images?.[0]?.url,
+                        },
+                        spotifyId: profile.id,
+                    });
+
+                    return profile;
+                } catch (error) {
+                    console.error('Failed to fetch Spotify profile:', error);
+                    set({ error: "Failed to load your Spotify profile" });
+                    return null;
+                }
+            },
+
+            fetchTopTracks: async (timeRange) => {
+                const state = get();
+                const tokenValid = await state.refreshTokenIfNeeded();
+
+                if (!tokenValid || !state.accessToken) {
                     set({ error: "Authentication required to fetch top tracks" });
                     return;
                 }
 
-                // Set loading state for specific time range
+                // Set loading state
                 set(state => ({
                     isLoadingTracks: {
                         ...state.isLoadingTracks,
@@ -318,30 +363,10 @@ export const useAuthStore = create<AuthState>()(
                 }));
 
                 try {
-                    // API call to Spotify
-                    const response = await fetch(`https://api.spotify.com/v1/me/top/tracks?time_range=${timeRange}&limit=50`, {
-                        headers: {
-                            'Authorization': `Bearer ${state.accessToken}`
-                        }
-                    });
+                    // Fetch tracks from Spotify API
+                    const tracks = await getTopTracks(state.accessToken, timeRange);
 
-                    if (!response.ok) {
-                        throw new Error(`Failed to fetch top tracks: ${response.statusText}`);
-                    }
-
-                    const data = await response.json();
-                    const tracks = data.items.map((item: any) => ({
-                        id: item.id,
-                        title: item.name,
-                        artist: item.artists.map((artist: any) => artist.name).join(', '),
-                        album: item.album.name,
-                        coverArt: item.album.images[0]?.url || '/api/placeholder/60/60',
-                        duration: formatDuration(item.duration_ms),
-                        popularity: item.popularity,
-                        timeRange
-                    }));
-
-                    // Update store with fetched tracks
+                    // Update store
                     set(state => ({
                         topTracks: {
                             ...state.topTracks,
@@ -352,11 +377,10 @@ export const useAuthStore = create<AuthState>()(
                             [timeRange]: false
                         }
                     }));
-
                 } catch (error) {
                     console.error(`Error fetching ${timeRange} top tracks:`, error);
                     set(state => ({
-                        error: error instanceof Error ? error.message : "Unknown error fetching top tracks",
+                        error: error instanceof Error ? error.message : "Failed to load top tracks",
                         isLoadingTracks: {
                             ...state.isLoadingTracks,
                             [timeRange]: false
@@ -367,9 +391,9 @@ export const useAuthStore = create<AuthState>()(
 
             fetchCurrentlyPlaying: async () => {
                 const state = get();
+                const tokenValid = await state.refreshTokenIfNeeded();
 
-                // Check authentication
-                if (!state.accessToken || state.isExpired()) {
+                if (!tokenValid || !state.accessToken) {
                     set({ error: "Authentication required to fetch current track" });
                     return;
                 }
@@ -377,47 +401,15 @@ export const useAuthStore = create<AuthState>()(
                 set({ loadingCurrentTrack: true, error: null });
 
                 try {
-                    // API call to Spotify
-                    const response = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
-                        headers: {
-                            'Authorization': `Bearer ${state.accessToken}`
-                        }
+                    const track = await getCurrentlyPlaying(state.accessToken);
+                    set({
+                        currentlyPlaying: track,
+                        loadingCurrentTrack: false
                     });
-
-                    // No content means nothing is playing
-                    if (response.status === 204) {
-                        set({ currentlyPlaying: null, loadingCurrentTrack: false });
-                        return;
-                    }
-
-                    if (!response.ok) {
-                        throw new Error(`Failed to fetch currently playing: ${response.statusText}`);
-                    }
-
-                    const data = await response.json();
-
-                    // Only process if actually playing (not paused)
-                    if (!data.is_playing) {
-                        set({ currentlyPlaying: null, loadingCurrentTrack: false });
-                        return;
-                    }
-
-                    const currentTrack = {
-                        id: data.item.id,
-                        title: data.item.name,
-                        artist: data.item.artists.map((artist: any) => artist.name).join(', '),
-                        album: data.item.album.name,
-                        coverArt: data.item.album.images[0]?.url || '/api/placeholder/60/60',
-                        duration: formatDuration(data.item.duration_ms),
-                        currentTime: formatDuration(data.progress_ms)
-                    };
-
-                    set({ currentlyPlaying: currentTrack, loadingCurrentTrack: false });
-
                 } catch (error) {
                     console.error("Error fetching currently playing track:", error);
                     set({
-                        error: error instanceof Error ? error.message : "Unknown error fetching current track",
+                        error: error instanceof Error ? error.message : "Failed to fetch current track",
                         loadingCurrentTrack: false
                     });
                 }
@@ -435,19 +427,15 @@ export const useAuthStore = create<AuthState>()(
                 });
             },
 
-            setError: (error) => {
-                set({ error });
-            }
+            setError: (error) => set({ error }),
         }),
         {
             name: 'spotify-auth-storage',
-            // Only store necessary fields, exclude sensitive tokens and music data from localStorage
+            // Only persist essential auth data, not tokens or music data
             partialize: (state) => ({
                 spotifyId: state.spotifyId,
-                spotifyUser: state.spotifyUser,
-                isAuthenticated: state.isAuthenticated,
                 fid: state.fid,
-                isLinked: state.isLinked
+                isLinked: state.isLinked,
             }),
         }
     )

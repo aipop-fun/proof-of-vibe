@@ -8,6 +8,7 @@ import { useAuthStore } from "~/lib/stores/authStore";
 import { SpotifyImage } from "./SpotifyImage";
 import { useFrame } from "./providers/FrameProvider";
 import sdk from "@farcaster/frame-sdk";
+import { getUsersWithSpotify } from "~/lib/supabase";
 
 export function ConnectedUsers() {
     const [selectedUser, setSelectedUser] = useState<number | null>(null);
@@ -55,10 +56,12 @@ export function ConnectedUsers() {
         }
     };
 
+
+
     if (isLoadingConnections) {
         return (
             <div className="bg-purple-800/20 p-4 rounded-lg">
-                <h3 className="font-medium mb-3">Connected Users</h3>
+                <h3 className="font-medium mb-3">🎧 Music Explorers</h3>
                 <div className="space-y-2">
                     {[1, 2, 3].map((i) => (
                         <div key={i} className="bg-purple-800/30 p-3 rounded animate-pulse h-14"></div>
@@ -76,6 +79,8 @@ export function ConnectedUsers() {
             </div>
         );
     }
+
+
 
     return (
         <div className="bg-purple-800/20 p-4 rounded-lg">
@@ -121,7 +126,7 @@ export function ConnectedUsers() {
                             onClick={() => setSelectedUser(null)}
                             className="text-xs px-2 py-1 bg-transparent border border-purple-600 hover:bg-purple-900/30"
                         >
-                            Back
+                            ← Back
                         </Button>
 
                         <Button
@@ -159,27 +164,26 @@ export function ConnectedUsers() {
                             </div>
                         ) : (
                             <div className="space-y-2 max-h-80 overflow-y-auto">
-                                {userTopTracks[selectedUser].map((track) => (
-                                    <div key={track.id} className="flex items-center p-2 bg-purple-900/30 rounded">
-                                        <div className="relative w-10 h-10 mr-3 flex-shrink-0">
-                                            <SpotifyImage
-                                                src={track.coverArt || '/api/placeholder/40/40'}
-                                                alt={track.title}
-                                                className="rounded"
-                                                fill
-                                                sizes="40px"
-                                                style={{ objectFit: 'cover' }}
-                                            />
-                                        </div>
-                                        <div className="min-w-0 flex-grow">
+                                <h4 className="font-medium mb-4">Top Tracks</h4>
+                                {userTopTracks[selectedUser]?.map((track, index) => (
+                                    <div key={track.id} className="flex items-center gap-3 p-2 hover:bg-purple-900/30 rounded">
+                                        <span className="text-sm text-purple-400 w-4">{index + 1}.</span>
+                                        <SpotifyImage
+                                            src={track.coverArt || ''}
+                                            alt={track.title}
+                                            className="w-10 h-10 rounded"
+                                        />
+                                        <div className="flex-1 min-w-0">
                                             <p className="font-medium text-sm truncate">{track.title}</p>
-                                            <p className="text-xs text-gray-300 truncate">{track.artist}</p>
+                                            <p className="text-xs text-purple-300 truncate">{track.artist}</p>
                                         </div>
-                                        {track.popularity !== undefined && (
-                                            <div className="text-xs text-gray-400 ml-2">
-                                                {track.popularity}%
-                                            </div>
-                                        )}
+                                        <div className="flex items-center gap-2">
+                                            {track.popularity && (
+                                                <div className="text-xs bg-purple-900/50 px-2 py-1 rounded">
+                                                    🔥 {track.popularity}%
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 ))}
                             </div>

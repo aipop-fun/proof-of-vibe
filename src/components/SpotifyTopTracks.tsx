@@ -1,13 +1,10 @@
-/* eslint-disable react-hooks/exhaustive-deps, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useState, useEffect } from 'react';
-import { useAuthStore } from '~/lib/stores/authStore';
+import { useAuthStore, type TimeRange } from '~/lib/stores/authStore';
 import { SpotifyImage } from './SpotifyImage';
 import { useFrame } from './providers/FrameProvider';
 import sdk from "@farcaster/frame-sdk";
-
-type TimeRange = 'short_term' | 'medium_term' | 'long_term';
 
 export function SpotifyTopTracks() {
     const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('medium_term');
@@ -23,11 +20,12 @@ export function SpotifyTopTracks() {
         isAuthenticated,
         spotifyId,
         isExpired,
-        accessToken
+        accessToken,
+        refreshTokenIfNeeded
     } = useAuthStore();
 
     // Friendly labels for time periods
-    const timeRangeLabels = {
+    const timeRangeLabels: Record<TimeRange, string> = {
         short_term: 'Last 4 Weeks',
         medium_term: 'Last 6 Months',
         long_term: 'All Time'
@@ -35,20 +33,56 @@ export function SpotifyTopTracks() {
 
     // Fetch top tracks when component mounts or dependencies change
     useEffect(() => {
-        if (isAuthenticated && accessToken && !isExpired() &&
-            topTracks[selectedTimeRange].length === 0 &&
-            !isLoadingTracks[selectedTimeRange]) {
-            fetchTopTracks(selectedTimeRange);
+        const loadTopTracks = async () => {
+            try {
+                // Check if token is valid and refresh if needed
+                const tokenValid = await refreshTokenIfNeeded();
+
+                if (tokenValid &&
+                    accessToken &&
+                    topTracks[selectedTimeRange].length === 0 &&
+                    !isLoadingTracks[selectedTimeRange]) {
+                    await fetchTopTracks(selectedTimeRange);
+                }
+            } catch (err) {
+                console.error(`Error loading top tracks (${selectedTimeRange}):`, err);
+                setError(err instanceof Error ? err.message : "Failed to load top tracks");
+            }
+        };
+
+        if (isAuthenticated && spotifyId) {
+            loadTopTracks();
         }
-    }, [selectedTimeRange, accessToken, isAuthenticated, isExpired, fetchTopTracks, topTracks, isLoadingTracks]);
+    }, [
+        selectedTimeRange,
+        isAuthenticated,
+        spotifyId,
+        accessToken,
+        isLoadingTracks,
+        topTracks,
+        fetchTopTracks,
+        refreshTokenIfNeeded
+    ]);
 
     // Handler for changing the time period
-    const handleTimeRangeChange = (timeRange: TimeRange) => {
+    const handleTimeRangeChange = async (timeRange: TimeRange) => {
         setSelectedTimeRange(timeRange);
 
         // Fetch data if not already loaded
-        if (topTracks[timeRange].length === 0 && !isLoadingTracks[timeRange]) {
-            fetchTopTracks(timeRange);
+        if (isAuthenticated &&
+            topTracks[timeRange].length === 0 &&
+            !isLoadingTracks[timeRange]) {
+            try {
+                // Check if token is valid and refresh if needed
+                const tokenValid = await refreshTokenIfNeeded();
+
+                if (tokenValid && accessToken) {
+                    await fetchTopTracks(timeRange);
+                }
+            } catch (err) {
+                console.error(`Error fetching top tracks (${timeRange}):`, err);
+                setError(err instanceof Error ? err.message : "Failed to load top tracks");
+            }
         }
     };
 
@@ -58,8 +92,22 @@ export function SpotifyTopTracks() {
     };
 
     // Handler for refreshing
-    const handleRefresh = () => {
-        fetchTopTracks(selectedTimeRange);
+    const handleRefresh = async () => {
+        if (isLoadingTracks[selectedTimeRange]) return;
+
+        setError(null);
+
+        try {
+            // Check if token is valid and refresh if needed
+            const tokenValid = await refreshTokenIfNeeded();
+
+            if (tokenValid && accessToken) {
+                await fetchTopTracks(selectedTimeRange);
+            }
+        } catch (err) {
+            console.error(`Error refreshing top tracks:`, err);
+            setError(err instanceof Error ? err.message : "Failed to refresh top tracks");
+        }
     };
 
     // Handler for sharing top tracks
@@ -155,7 +203,7 @@ export function SpotifyTopTracks() {
                         <div className="text-center text-gray-400 p-4">
                             <p>No tracks found for this period</p>
                             <button
-                                onClick={() => fetchTopTracks(selectedTimeRange)}
+                                onClick={handleRefresh}
                                 className="mt-2 text-sm text-purple-400 hover:text-purple-300"
                             >
                                 Try again
@@ -166,7 +214,7 @@ export function SpotifyTopTracks() {
                             <div key={track.id} className="flex items-center p-2 bg-purple-900/30 rounded">
                                 <div className="relative w-10 h-10 mr-3 flex-shrink-0">
                                     <SpotifyImage
-                                        src={track.coverArt || '/api/placeholder/60/60'}
+                                        src={track.coverArt || '/api/placeholder/40/40'}
                                         alt={track.title}
                                         className="rounded"
                                         fill

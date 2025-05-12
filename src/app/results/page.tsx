@@ -152,7 +152,7 @@ export default function ResultsPage() {
                         {isMiniApp && !added && (
                             <Button
                                 onClick={addFrame}
-                                className="text-sm px-3 py-1 bg-purple-600 hover:bg-purple-700"
+                                className="text-xs px-2 py-0.5 bg-purple-600 hover:bg-purple-700"
                             >
                                 Add to Farcaster
                             </Button>
