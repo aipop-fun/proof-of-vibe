@@ -117,7 +117,7 @@ export function Dashboard() {
   const handleShare = () => {
     if (typeof sdk?.actions?.composeCast === 'function') {
       sdk.actions.composeCast({
-        text: "🎵 Check out Proof of Vibes! Connect your Spotify and share your music taste with friends on Farcaster.",
+        text: "🎵 Check out Timbra! Connect your Spotify and share your music taste with friends on Farcaster.",
         embeds: [process.env.NEXT_PUBLIC_URL || "https://timbra.aipop.fun"]
       });
     } else if (typeof sdk?.actions?.openUrl === 'function') {
@@ -169,7 +169,7 @@ export function Dashboard() {
       {/* Header */}
       <div className="px-4 py-6">
         <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Proof of Vibes</h1>
+          <h1 className="text-2xl font-bold">Timbra</h1>
           <div className="flex items-center gap-2">
             {isAuthenticated && isLinked && (
               <Button

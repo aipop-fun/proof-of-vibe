@@ -119,7 +119,7 @@ export class NotificationService {
         switch (type) {
             case 'welcome':
                 return {
-                    title: "Welcome to Proof of Vibes!",
+                    title: "Welcome to Timbra!",
                     body: "Connect your Spotify to share your music with friends on Farcaster.",
                     targetUrl: baseUrl
                 };
@@ -157,7 +157,7 @@ export class NotificationService {
 
             default:
                 return {
-                    title: "Proof of Vibes",
+                    title: "Timbra",
                     body: "Check out what's happening with your music vibes!",
                     targetUrl: baseUrl
                 };

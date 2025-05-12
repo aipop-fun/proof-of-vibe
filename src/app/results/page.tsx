@@ -58,35 +58,35 @@ export default function ResultsPage() {
     const userName = spotifyUser?.name || 'music lover';
 
     // Generate page title and description based on results type
-    let title = 'My Music Results - Proof of Vibes';
-    let description = 'Check out my music taste on Proof of Vibes!';
+    let title = 'My Music Results - Timbra';
+    let description = 'Check out my music taste on Timbra!';
     let imageUrl = `${baseUrl}/opengraph-image`;
-    let shareMessage = '🎵 Check out my music taste on Proof of Vibes!';
+    let shareMessage = '🎵 Check out my music taste on Timbra!';
 
     // Customize content based on the results type
     if (type === 'currently-playing' && currentlyPlaying) {
         title = `${userName} is listening to ${currentlyPlaying.title} by ${currentlyPlaying.artist}`;
-        description = `${userName} is currently playing ${currentlyPlaying.title} by ${currentlyPlaying.artist} on Proof of Vibes`;
+        description = `${userName} is currently playing ${currentlyPlaying.title} by ${currentlyPlaying.artist} on Timbra`;
         imageUrl = currentlyPlaying.coverArt || imageUrl;
-        shareMessage = `🎵 I'm currently listening to ${currentlyPlaying.title} by ${currentlyPlaying.artist} on Proof of Vibes!`;
+        shareMessage = `🎵 I'm currently listening to ${currentlyPlaying.title} by ${currentlyPlaying.artist} on Timbra!`;
     } else if (type === 'top-tracks' && topTracks[timeRange]?.length > 0) {
         const trackCount = topTracks[timeRange].length;
         const timeRangeText = timeRange === 'short_term' ? 'the last month' :
             timeRange === 'medium_term' ? 'the last 6 months' : 'all time';
 
         title = `${userName}'s Top Tracks`;
-        description = `Check out ${userName}'s top ${trackCount} tracks from ${timeRangeText} on Proof of Vibes`;
+        description = `Check out ${userName}'s top ${trackCount} tracks from ${timeRangeText} on Timbra`;
 
         // Use the top track's cover for the image
         if (topTracks[timeRange][0]?.coverArt) {
             imageUrl = topTracks[timeRange][0].coverArt;
         }
 
-        shareMessage = `🎵 Here are my top tracks from ${timeRangeText} on Proof of Vibes!`;
+        shareMessage = `🎵 Here are my top tracks from ${timeRangeText} on Timbra!`;
     } else if (type === 'vibe-match') {
         title = `${userName}'s Vibe Match Results`;
-        description = `Check out who matches ${userName}'s music taste on Proof of Vibes!`;
-        shareMessage = '🎵 Just got my vibe match results on Proof of Vibes! See who has similar music taste!';
+        description = `Check out who matches ${userName}'s music taste on Timbra!`;
+        shareMessage = '🎵 Just got my vibe match results on Timbra! See who has similar music taste!';
     }
 
     // Create the frame embed for this results page
@@ -98,7 +98,7 @@ export default function ResultsPage() {
             action: {
                 type: "launch_frame",
                 url: `${baseUrl}/results?type=${type}${timeRange ? `&timeRange=${timeRange}` : ''}`,
-                name: "Proof of Vibes",
+                name: "Timbra",
                 splashImageUrl: `${baseUrl}/splash.png`,
                 splashBackgroundColor: "#f7f7f7"
             }
@@ -146,7 +146,7 @@ export default function ResultsPage() {
             >
                 <div className="container mx-auto max-w-md p-6">
                     <div className="flex justify-between items-center mb-6">
-                        <h1 className="text-2xl font-bold">Proof of Vibes</h1>
+                        <h1 className="text-2xl font-bold">Timbra</h1>
 
                         {/* Add Frame button if in Mini App context */}
                         {isMiniApp && !added && (

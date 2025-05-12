@@ -72,7 +72,7 @@ export function SpotifyTopTracks() {
 
         // Share message based on time range
         const timeRangeText = timeRangeLabels[selectedTimeRange];
-        const shareMessage = `🎵 Check out my top tracks from ${timeRangeText} on Proof of Vibes!`;
+        const shareMessage = `🎵 Check out my top tracks from ${timeRangeText} on Timbra!`;
 
         // Determine the appropriate sharing method based on context
         if (isMiniApp && typeof sdk?.actions?.composeCast === 'function') {

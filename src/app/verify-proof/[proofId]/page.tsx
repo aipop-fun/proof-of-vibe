@@ -58,7 +58,7 @@ export default function VerifyProofByIdPage() {
         return (
             <div className="flex items-center justify-center h-screen bg-gradient-to-b from-purple-900 to-black text-white">
                 <div className="text-center">
-                    <h1 className="text-2xl font-bold mb-4">Proof of Vibes</h1>
+                    <h1 className="text-2xl font-bold mb-4">Timbra</h1>
                     <p className="animate-pulse">Loading proof data...</p>
                 </div>
             </div>

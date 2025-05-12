@@ -43,7 +43,7 @@ export default function SignIn() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-b from-purple-900 to-black text-white">
       <div className="p-8 max-w-md w-full bg-purple-800/20 rounded-lg shadow-lg">
-        <h1 className="text-2xl font-bold text-center mb-6">Sign In to Proof of Vibes</h1>
+        <h1 className="text-2xl font-bold text-center mb-6">Sign In to Timbra</h1>
 
         {error && (
           <div className="p-3 mb-4 bg-red-900/30 text-red-200 rounded-md text-sm">

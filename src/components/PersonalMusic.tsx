@@ -75,7 +75,7 @@ export function PersonalMusic() {
         if (isMiniApp && typeof sdk?.actions?.composeCast === 'function') {
             // When in Farcaster mini app, use composeCast
             sdk.actions.composeCast({
-                text: `🎵 I'm currently listening to ${currentlyPlaying.title} by ${currentlyPlaying.artist} on Proof of Vibes!`,
+                text: `🎵 I'm currently listening to ${currentlyPlaying.title} by ${currentlyPlaying.artist} on Timbra!`,
                 embeds: [shareUrl]
             });
         } else {

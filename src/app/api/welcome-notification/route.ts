@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     // Send the welcome notification
     const result = await sendNotification({
       fid,
-      title: "Welcome to Proof of Vibes!",
+      title: "Welcome to Timbra!",
       body: "Connect your Spotify to share your music with friends on Farcaster.",
     
     });

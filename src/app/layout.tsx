@@ -6,19 +6,19 @@ import { Providers } from "~/app/providers";
 import Script from "next/script";
 
 export const metadata: Metadata = {
-  title: process.env.NEXT_PUBLIC_FRAME_NAME || "Proof of Vibes",
+  title: process.env.NEXT_PUBLIC_FRAME_NAME || "Timbra",
   description: process.env.NEXT_PUBLIC_FRAME_DESCRIPTION || "Share your music vibe with friends on Farcaster",
   openGraph: {
-    title: process.env.NEXT_PUBLIC_FRAME_NAME || "Proof of Vibes",
+    title: process.env.NEXT_PUBLIC_FRAME_NAME || "Timbra",
     description: process.env.NEXT_PUBLIC_FRAME_DESCRIPTION || "Share your music vibe with friends on Farcaster",
     url: process.env.NEXT_PUBLIC_URL,
-    siteName: process.env.NEXT_PUBLIC_FRAME_NAME || "Proof of Vibes",
+    siteName: process.env.NEXT_PUBLIC_FRAME_NAME || "Timbra",
     locale: "en_US",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: process.env.NEXT_PUBLIC_FRAME_NAME || "Proof of Vibes",
+    title: process.env.NEXT_PUBLIC_FRAME_NAME || "Timbra",
     description: process.env.NEXT_PUBLIC_FRAME_DESCRIPTION || "Share your music vibe with friends on Farcaster",
   },
   other: {
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
         action: {
           type: "launch_frame",
           url: process.env.NEXT_PUBLIC_URL,
-          name: process.env.NEXT_PUBLIC_FRAME_NAME || "Proof of Vibes",
+          name: process.env.NEXT_PUBLIC_FRAME_NAME || "Timbra",
           splashImageUrl: `${process.env.NEXT_PUBLIC_URL}/splash.png`,
           splashBackgroundColor: "#f7f7f7"
         }

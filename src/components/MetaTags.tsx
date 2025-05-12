@@ -12,7 +12,7 @@ interface MetaTagsProps {
 }
 
 export function MetaTags({
-    title = "Proof of Vibes",
+    title = "Timbra",
     description = "Share your music taste with friends on Farcaster",
     imageUrl,
     buttonTitle = "Open App",
@@ -43,7 +43,7 @@ export function MetaTags({
             action: {
                 type: "launch_frame",
                 url: finalTargetUrl,
-                name: "Proof of Vibes"
+                name: "Timbra"
             }
         }
     };

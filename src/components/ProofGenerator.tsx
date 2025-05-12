@@ -103,7 +103,7 @@ export function ProofGenerator({
         const verifyUrl = `${baseUrl}/verify-proof/${generatedProof.proofId}`;
 
         // Create a share message
-        const shareMessage = `🎵 I've generated a cryptographic proof of my Spotify ${endpoint} data using Proof of Vibes! Verify it here:`;
+        const shareMessage = `🎵 I've generated a cryptographic proof of my Spotify ${endpoint} data using Timbra! Verify it here:`;
 
         // Share via Farcaster when in mini app
         if (isMiniApp && typeof sdk?.actions?.composeCast === "function") {

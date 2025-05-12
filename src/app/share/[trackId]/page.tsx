@@ -110,8 +110,8 @@ export default function ShareTrackPage() {
 
     // Create share message for this track
     const shareMessage = track ?
-        `🎵 I'm vibing to ${track.title} by ${track.artist} on Proof of Vibes!` :
-        '🎵 Check out Proof of Vibes - share your music with friends on Farcaster!';
+        `🎵 I'm vibing to ${track.title} by ${track.artist} on Timbra!` :
+        '🎵 Check out Timbra - share your music with friends on Farcaster!';
 
     // Create the frame embed JSON for this specific share page
     const frameEmbed = {
@@ -122,7 +122,7 @@ export default function ShareTrackPage() {
             action: {
                 type: "launch_frame",
                 url: `${baseUrl}/share/${trackId}`,
-                name: "Proof of Vibes",
+                name: "Timbra",
                 splashImageUrl: `${baseUrl}/splash.png`,
                 splashBackgroundColor: "#f7f7f7"
             }
@@ -157,18 +157,18 @@ export default function ShareTrackPage() {
     return (
         <>
             <Head>
-                <title>{`${track.title} by ${track.artist} - Proof of Vibes`}</title>
-                <meta name="description" content={`Check out ${track.title} by ${track.artist} on Proof of Vibes!`} />
-                <meta property="og:title" content={`${track.title} by ${track.artist} - Proof of Vibes`} />
-                <meta property="og:description" content={`Check out ${track.title} by ${track.artist} on Proof of Vibes!`} />
+                <title>{`${track.title} by ${track.artist} - Timbra`}</title>
+                <meta name="description" content={`Check out ${track.title} by ${track.artist} on Timbra!`} />
+                <meta property="og:title" content={`${track.title} by ${track.artist} - Timbra`} />
+                <meta property="og:description" content={`Check out ${track.title} by ${track.artist} on Timbra!`} />
                 <meta property="og:image" content={track.albumArt} />
                 <meta property="og:type" content="website" />
                 <meta property="og:url" content={`${baseUrl}/share/${trackId}`} />
 
                 {/* Twitter Card meta tags */}
                 <meta name="twitter:card" content="summary_large_image" />
-                <meta name="twitter:title" content={`${track.title} by ${track.artist} - Proof of Vibes`} />
-                <meta name="twitter:description" content={`Check out ${track.title} by ${track.artist} on Proof of Vibes!`} />
+                <meta name="twitter:title" content={`${track.title} by ${track.artist} - Timbra`} />
+                <meta name="twitter:description" content={`Check out ${track.title} by ${track.artist} on Timbra!`} />
                 <meta name="twitter:image" content={track.albumArt} />
 
                 {/* Farcaster Frame meta tag */}
@@ -185,7 +185,7 @@ export default function ShareTrackPage() {
                 } : {}}
             >
                 <div className="container mx-auto max-w-md p-6">
-                    <h1 className="text-2xl font-bold mb-6 text-center">Proof of Vibes</h1>
+                    <h1 className="text-2xl font-bold mb-6 text-center">Timbra</h1>
 
                     <div className="bg-purple-800/30 rounded-lg p-6">
                         <div className="flex flex-col items-center">
@@ -202,7 +202,7 @@ export default function ShareTrackPage() {
                             <p className="text-sm text-gray-400">{track.album}</p>
 
                             <div className="mt-4 bg-purple-900/50 px-3 py-1 rounded-full text-sm">
-                                {track.listenCount} plays on Proof of Vibes
+                                {track.listenCount} plays on Timbra
                             </div>
                         </div>
                     </div>
