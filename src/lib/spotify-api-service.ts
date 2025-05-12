@@ -1,96 +1,149 @@
+/* eslint-disable   @typescript-eslint/no-unused-vars, @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
+// @ts-nocheck
 
-/* eslint-disable  @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
-
-import { SpotifyApi } from "@spotify/web-api-ts-sdk";
-import { formatDuration } from './utils';
+import { SpotifyTrack, TimeRange } from './stores/spotifyDataStore';
 
 /**
- * Custom authentication strategy that uses a provided access token
+ * Formata a duração em milissegundos para o formato mm:ss
  */
-class TokenAuthStrategy {
-    private accessToken: string;
-
-    constructor(accessToken: string) {
-        this.accessToken = accessToken;
-    }
-
-    public async getOrCreateAccessToken() {
-        return {
-            access_token: this.accessToken,
-            token_type: "Bearer",
-            expires_in: 3600, // Assume an hour of validity
-            refresh_token: "", // Not needed for this strategy
-        };
-    }
-
-    public async getAccessToken() {
-        return this.getOrCreateAccessToken();
-    }
-
-    public removeAccessToken() {
-        // No-op for this implementation
-    }
+export function formatDuration(ms: number): string {
+    if (!ms) return '0:00';
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
 /**
- * Initializes a Spotify API client with the provided access token
+ * Obtém o token de acesso via refresh token
  */
-export function initSpotifyClient(accessToken: string): SpotifyApi {
-    if (!accessToken) {
-        throw new Error("Access token is required to initialize Spotify client");
-    }
-
-    const authStrategy = new TokenAuthStrategy(accessToken);
-    return new SpotifyApi(authStrategy);
-}
-
-/**
- * Get the user's currently playing track
- */
-export async function getCurrentlyPlaying(accessToken: string) {
+export async function refreshAccessToken(refreshToken: string): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: number;
+}> {
     try {
-        const spotify = initSpotifyClient(accessToken);
-        const response = await spotify.player.getCurrentlyPlayingTrack();
+        const response = await fetch('/api/auth/refresh', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ refreshToken }),
+        });
 
-        // No track currently playing
-        if (!response || !response.item || !response.is_playing) {
-            return null;
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Failed to refresh token');
         }
 
-        // Format the track data
-        const track = response.item;
+        const data = await response.json();
+
         return {
-            id: track.id,
-            title: track.name,
-            artist: track.artists.map(artist => artist.name).join(', '),
-            album: track.album.name,
-            coverArt: track.album.images[0]?.url,
-            duration: formatDuration(track.duration_ms),
-            currentTime: formatDuration(response.progress_ms || 0),
-            type: track.type,
-            uri: track.uri,
-            isPlaying: response.is_playing,
-            progressMs: response.progress_ms,
-            durationMs: track.duration_ms
+            accessToken: data.access_token,
+            refreshToken: data.refresh_token || refreshToken,
+            expiresAt: Math.floor(Date.now() / 1000) + data.expires_in,
         };
     } catch (error) {
-        console.error('Error fetching currently playing track:', error);
+        console.error('Error refreshing token:', error);
         throw error;
     }
 }
 
 /**
- * Get the user's top tracks for a specific time range
+ * Valida se o token de acesso está ativo
  */
-export async function getTopTracks(accessToken: string, timeRange = 'medium_term') {
+export async function validateToken(accessToken: string): Promise<boolean> {
     try {
-        const spotify = initSpotifyClient(accessToken);
-        const response = await spotify.currentUser.topItems('tracks', timeRange as any, 50);
+        const response = await fetch('https://api.spotify.com/v1/me', {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+            },
+        });
 
-        return response.items.map(track => ({
+        return response.ok;
+    } catch (error) {
+        console.error('Token validation error:', error);
+        return false;
+    }
+}
+
+/**
+ * Obtém a faixa em reprodução atualmente
+ */
+export async function getCurrentlyPlaying(accessToken: string): Promise<SpotifyTrack | null> {
+    try {
+        const response = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+            },
+        });
+
+        // Se não houver nada tocando (204 No Content)
+        if (response.status === 204) {
+            return null;
+        }
+
+        // Se houver um erro na requisição
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`API Error (${response.status}): ${errorText}`);
+        }
+
+        const data = await response.json();
+
+        // Se não houver dados ou o item for nulo
+        if (!data || !data.item) {
+            return null;
+        }
+
+        // Formatar os dados da faixa
+        const track = data.item;
+        return {
             id: track.id,
             title: track.name,
-            artist: track.artists.map(artist => artist.name).join(', '),
+            artist: track.artists.map((artist: any) => artist.name).join(', '),
+            album: track.album.name,
+            coverArt: track.album.images[0]?.url,
+            duration: formatDuration(track.duration_ms),
+            currentTime: formatDuration(data.progress_ms || 0),
+            type: track.type,
+            uri: track.uri,
+            isPlaying: data.is_playing,
+            progressMs: data.progress_ms,
+            durationMs: track.duration_ms
+        };
+    } catch (error) {
+        console.error('Error fetching currently playing:', error);
+        throw error;
+    }
+}
+
+/**
+ * Obtém as top tracks do usuário para um período específico
+ */
+export async function getTopTracks(accessToken: string, timeRange: TimeRange = 'medium_term'): Promise<SpotifyTrack[]> {
+    try {
+        const response = await fetch(
+            `https://api.spotify.com/v1/me/top/tracks?time_range=${timeRange}&limit=50`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                },
+            }
+        );
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`API Error (${response.status}): ${errorText}`);
+        }
+
+        const data = await response.json();
+
+        // Formatar cada faixa retornada
+        return data.items.map((track: any) => ({
+            id: track.id,
+            title: track.name,
+            artist: track.artists.map((artist: any) => artist.name).join(', '),
             album: track.album.name,
             coverArt: track.album.images[0]?.url,
             duration: formatDuration(track.duration_ms),
@@ -105,58 +158,24 @@ export async function getTopTracks(accessToken: string, timeRange = 'medium_term
 }
 
 /**
- * Get the user's Spotify profile information
+ * Obtém o perfil do usuário do Spotify
  */
-export async function getUserProfile(accessToken: string) {
+export async function getUserProfile(accessToken: string): Promise<any> {
     try {
-        const spotify = initSpotifyClient(accessToken);
-        return await spotify.currentUser.profile();
-    } catch (error) {
-        console.error('Error fetching user profile:', error);
-        throw error;
-    }
-}
-
-/**
- * Check if the access token is valid by making a simple API request
- */
-export async function validateToken(accessToken: string): Promise<boolean> {
-    try {
-        const spotify = initSpotifyClient(accessToken);
-        await spotify.currentUser.profile();
-        return true;
-    } catch (error) {
-        console.error('Token validation failed:', error);
-        return false;
-    }
-}
-
-/**
- * Refresh an expired access token
- * This requires a server-side implementation with client credentials
- */
-export async function refreshAccessToken(refreshToken: string) {
-    try {
-        const response = await fetch('/api/auth/refresh', {
-            method: 'POST',
+        const response = await fetch('https://api.spotify.com/v1/me', {
             headers: {
-                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`,
             },
-            body: JSON.stringify({ refreshToken }),
         });
 
         if (!response.ok) {
-            throw new Error('Failed to refresh token');
+            const errorText = await response.text();
+            throw new Error(`API Error (${response.status}): ${errorText}`);
         }
 
-        const data = await response.json();
-        return {
-            accessToken: data.access_token,
-            refreshToken: data.refresh_token || refreshToken,
-            expiresAt: Math.floor(Date.now() / 1000) + data.expires_in,
-        };
+        return response.json();
     } catch (error) {
-        console.error('Error refreshing token:', error);
+        console.error('Error fetching user profile:', error);
         throw error;
     }
 }

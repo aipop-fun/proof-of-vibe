@@ -1,4 +1,3 @@
-// src/components/providers/FrameProvider.tsx
 "use client";
 
 import { useEffect, useState, useCallback, createContext, useContext } from "react";
@@ -8,6 +7,7 @@ import sdk, {
   AddFrame
 } from "@farcaster/frame-sdk";
 import React from "react";
+import { isFarcasterMiniApp } from "~/lib/splashScreen";
 
 interface FrameContextType {
   isSDKLoaded: boolean;
@@ -81,23 +81,6 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Check if we're in a Farcaster mini app environment
-  const detectMiniApp = useCallback(() => {
-    // Check if window is defined (since this runs in both server and client)
-    if (typeof window === 'undefined') return false;
-
-    return (
-      // Check if we're in an iframe
-      window.parent !== window ||
-      // Check URL for Farcaster frame parameters
-      !!window.location.href.match(/fc-frame=|warpcast\.com|farcaster\./i) ||
-      // Check for presence of fc:frame meta tag
-      !!document.querySelector('meta[name="fc:frame"]') ||
-      // Check for specific query parameters
-      !!new URLSearchParams(window.location.search).get('miniApp')
-    );
-  }, []);
-
   // Initialize the SDK and set up event listeners
   useEffect(() => {
     const load = async () => {
@@ -106,7 +89,7 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
         if (isSDKLoaded) return;
 
         // Check if running in Farcaster mini app environment
-        const miniAppDetected = detectMiniApp();
+        const miniAppDetected = isFarcasterMiniApp();
         setIsMiniApp(miniAppDetected);
 
         // Get context from SDK
@@ -165,17 +148,8 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
           setLastEvent("Notifications disabled");
         });
 
-        // Call ready action to signal frame is ready if in Mini App context
-        if (miniAppDetected) {
-          console.log("Calling ready (Mini App detected)");
-          try {
-            await sdk.actions.ready({});
-            console.log("Ready called successfully");
-          } catch (readyError) {
-            console.error("Error calling ready:", readyError);
-            // Not fatal, continue
-          }
-        }
+        // Note: We no longer call sdk.actions.ready() here
+        // AppLoader will take care of that at the appropriate time
       } catch (error) {
         console.error("Error initializing Frame SDK:", error);
       }
@@ -196,7 +170,7 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
         }
       };
     }
-  }, [isSDKLoaded, detectMiniApp]);
+  }, [isSDKLoaded]);
 
   // Context value to be provided to child components
   const value: FrameContextType = {

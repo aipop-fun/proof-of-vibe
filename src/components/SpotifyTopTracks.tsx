@@ -2,11 +2,12 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuthStore, type TimeRange } from '~/lib/stores/authStore';
 import { SpotifyImage } from './SpotifyImage';
 import { useFrame } from './providers/FrameProvider';
 import sdk from "@farcaster/frame-sdk";
+import { TrackListSkeleton } from './SkeletonLoader';
 
 export function SpotifyTopTracks() {
     const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('medium_term');
@@ -33,58 +34,39 @@ export function SpotifyTopTracks() {
         long_term: 'All Time'
     };
 
-    // Fetch top tracks when component mounts or dependencies change
-    useEffect(() => {
-        const loadTopTracks = async () => {
-            try {
-                // Check if token is valid and refresh if needed
-                const tokenValid = await refreshTokenIfNeeded();
+    // Fetch top tracks data when component mounts or dependencies change
+    const loadTopTracksData = useCallback(async (timeRange: TimeRange) => {
+        try {
+            // Check if token is valid and refresh if needed
+            const tokenValid = await refreshTokenIfNeeded();
 
-                if (tokenValid &&
-                    accessToken &&
-                    topTracks[selectedTimeRange].length === 0 &&
-                    !isLoadingTracks[selectedTimeRange]) {
-                    await fetchTopTracks(selectedTimeRange);
-                }
-            } catch (err) {
-                console.error(`Error loading top tracks (${selectedTimeRange}):`, err);
-                setError(err instanceof Error ? err.message : "Failed to load top tracks");
+            if (tokenValid && accessToken &&
+                (topTracks[timeRange].length === 0 ||
+                    !isLoadingTracks[timeRange])) {
+                await fetchTopTracks(timeRange);
             }
-        };
-
-        if (isAuthenticated && spotifyId) {
-            loadTopTracks();
+        } catch (err) {
+            console.error(`Error loading top tracks (${timeRange}):`, err);
+            setError(err instanceof Error ? err.message : "Failed to load top tracks");
         }
-    }, [
-        selectedTimeRange,
-        isAuthenticated,
-        spotifyId,
-        accessToken,
-        isLoadingTracks,
-        topTracks,
-        fetchTopTracks,
-        refreshTokenIfNeeded
-    ]);
+    }, [accessToken, fetchTopTracks, isLoadingTracks, refreshTokenIfNeeded, topTracks]);
+
+    // Initial data load
+    useEffect(() => {
+        if (isAuthenticated && spotifyId) {
+            loadTopTracksData(selectedTimeRange);
+        }
+    }, [isAuthenticated, loadTopTracksData, selectedTimeRange, spotifyId]);
 
     // Handler for changing the time period
-    const handleTimeRangeChange = async (timeRange: TimeRange) => {
+    const handleTimeRangeChange = (timeRange: TimeRange) => {
         setSelectedTimeRange(timeRange);
 
-        // Fetch data if not already loaded
+        // Load data for the new time range if needed
         if (isAuthenticated &&
-            topTracks[timeRange].length === 0 &&
-            !isLoadingTracks[timeRange]) {
-            try {
-                // Check if token is valid and refresh if needed
-                const tokenValid = await refreshTokenIfNeeded();
-
-                if (tokenValid && accessToken) {
-                    await fetchTopTracks(timeRange);
-                }
-            } catch (err) {
-                console.error(`Error fetching top tracks (${timeRange}):`, err);
-                setError(err instanceof Error ? err.message : "Failed to load top tracks");
-            }
+            (topTracks[timeRange].length === 0 &&
+                !isLoadingTracks[timeRange])) {
+            loadTopTracksData(timeRange);
         }
     };
 
@@ -93,23 +75,12 @@ export function SpotifyTopTracks() {
         setIsExpanded(!isExpanded);
     };
 
-    // Handler for refreshing
+    // Handler for refreshing data
     const handleRefresh = async () => {
         if (isLoadingTracks[selectedTimeRange]) return;
 
         setError(null);
-
-        try {
-            // Check if token is valid and refresh if needed
-            const tokenValid = await refreshTokenIfNeeded();
-
-            if (tokenValid && accessToken) {
-                await fetchTopTracks(selectedTimeRange);
-            }
-        } catch (err) {
-            console.error(`Error refreshing top tracks:`, err);
-            setError(err instanceof Error ? err.message : "Failed to refresh top tracks");
-        }
+        await loadTopTracksData(selectedTimeRange);
     };
 
     // Handler for sharing top tracks
@@ -193,11 +164,7 @@ export function SpotifyTopTracks() {
 
             {/* Loading state */}
             {isLoadingTracks[selectedTimeRange] ? (
-                <div className="animate-pulse space-y-2">
-                    {[...Array(4)].map((_, i) => (
-                        <div key={i} className="h-14 bg-purple-800/20 rounded-md"></div>
-                    ))}
-                </div>
+                <TrackListSkeleton count={4} />
             ) : (
                 /* Track list */
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
@@ -219,8 +186,8 @@ export function SpotifyTopTracks() {
                                         src={track.coverArt || '/api/placeholder/40/40'}
                                         alt={track.title}
                                         className="rounded"
-                                        fill
-                                        sizes="40px"
+                                        width={40}
+                                        height={40}
                                         style={{ objectFit: 'cover' }}
                                     />
                                 </div>
