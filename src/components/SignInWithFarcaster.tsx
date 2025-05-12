@@ -1,5 +1,6 @@
 /* eslint-disable   @typescript-eslint/no-unused-vars,  @typescript-eslint/ban-ts-comment, prefer-const */
 // @ts-nocheck
+// src/components/SignInWithFarcaster.tsx
 "use client";
 
 import { useCallback, useState, useEffect } from "react";
@@ -26,40 +27,44 @@ export function SignInWithFarcaster() {
 
     // Verify SDK availability and detect environment after component mount
     useEffect(() => {
-        const timer = setTimeout(async () => {
-            const sdkAvailable = typeof sdk !== 'undefined' &&
-                typeof sdk.actions !== 'undefined' &&
-                typeof sdk.actions.signIn === 'function';
+        const checkSDK = async () => {
+            try {
+                const sdkAvailable = typeof sdk !== 'undefined' &&
+                    typeof sdk.actions !== 'undefined' &&
+                    typeof sdk.actions.signIn === 'function';
 
-            // Detect if running as a mini app inside Farcaster
-            const isFarcasterMiniApp = window.parent !== window ||
-                !!window.location.href.match(/fc-frame=|warpcast\.com/i);
+                // Detect if running as a mini app inside Farcaster
+                const isFarcasterMiniApp = window.parent !== window ||
+                    !!window.location.href.match(/fc-frame=|warpcast\.com/i);
 
-            setIsSDKReady(sdkAvailable);
-            setIsMiniApp(isFarcasterMiniApp);
+                setIsSDKReady(sdkAvailable);
+                setIsMiniApp(isFarcasterMiniApp);
 
-            // If we're in a mini app and SDK is available, try to get user context
-            if (sdkAvailable && isFarcasterMiniApp) {
-                try {
-                    const context = await sdk.context;
-                    if (context?.user?.fid) {
-                        // Auto-authenticate if we have user FID from context
-                        setFarcasterAuth({ fid: context.user.fid });
+                // If we're in a mini app and SDK is available, try to get user context
+                if (sdkAvailable && isFarcasterMiniApp) {
+                    try {
+                        const context = await sdk.context;
+                        if (context?.user?.fid) {
+                            // Auto-authenticate if we have user FID from context
+                            setFarcasterAuth({ fid: context.user.fid });
 
-                        // Notify frame we're ready
-                        try {
-                            await sdk.actions.ready();
-                        } catch (readyError) {
-                            console.error("Error calling ready:", readyError);
+                            // Notify frame we're ready
+                            try {
+                                await sdk.actions.ready();
+                            } catch (readyError) {
+                                console.error("Error calling ready:", readyError);
+                            }
                         }
+                    } catch (contextError) {
+                        console.error("Error accessing Farcaster context:", contextError);
                     }
-                } catch (contextError) {
-                    console.error("Error accessing Farcaster context:", contextError);
                 }
+            } catch (error) {
+                console.error("Error checking SDK availability:", error);
             }
-        }, 1000);
+        };
 
-        return () => clearTimeout(timer);
+        checkSDK();
     }, [setFarcasterAuth]);
 
     /**
@@ -114,7 +119,11 @@ export function SignInWithFarcaster() {
 
             try {
                 // Attempt authentication with Farcaster
-                const result = await sdk.actions.signIn({ nonce });
+                const result = await sdk.actions.signIn({
+                    nonce,
+                    // Enable auth address authentication for better UX
+                    acceptAuthAddress: true
+                });
 
                 if (!result || typeof result !== 'object') {
                     throw new Error("Invalid authentication response");
@@ -177,7 +186,7 @@ export function SignInWithFarcaster() {
                 // Handle specific error types with appropriate user messaging
                 if (error instanceof SignInCore.RejectedByUser) {
                     setSignInFailure("Authentication rejected by user");
-                } else if (error.message.includes("Cannot read properties of undefined")) {
+                } else if (error.message?.includes("Cannot read properties of undefined")) {
                     setSignInFailure("Communication error with Farcaster. Please try again in a compatible browser.");
                 } else {
                     setSignInFailure(error.message || "Authentication failed");
@@ -195,7 +204,7 @@ export function SignInWithFarcaster() {
             <Button
                 onClick={handleSignIn}
                 disabled={signingIn || !isSDKReady}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-full font-medium"
+                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-full font-medium w-full"
             >
                 {signingIn
                     ? "Signing in..."

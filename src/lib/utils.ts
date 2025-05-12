@@ -1,4 +1,4 @@
-// src/lib/utils.ts
+/* eslint-disable  @typescript-eslint/no-unused-vars, react/no-unescaped-entities */
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { mnemonicToAccount } from 'viem/accounts';

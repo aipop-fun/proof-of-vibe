@@ -1,3 +1,4 @@
+// src/components/providers/FrameProvider.tsx
 "use client";
 
 import { useEffect, useState, useCallback, createContext, useContext } from "react";
@@ -80,27 +81,55 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Check if we're in a Farcaster mini app environment
+  const detectMiniApp = useCallback(() => {
+    // Check if window is defined (since this runs in both server and client)
+    if (typeof window === 'undefined') return false;
+
+    return (
+      // Check if we're in an iframe
+      window.parent !== window ||
+      // Check URL for Farcaster frame parameters
+      !!window.location.href.match(/fc-frame=|warpcast\.com|farcaster\./i) ||
+      // Check for presence of fc:frame meta tag
+      !!document.querySelector('meta[name="fc:frame"]') ||
+      // Check for specific query parameters
+      !!new URLSearchParams(window.location.search).get('miniApp')
+    );
+  }, []);
+
   // Initialize the SDK and set up event listeners
   useEffect(() => {
     const load = async () => {
       try {
+        // Check if the SDK is already initialized
+        if (isSDKLoaded) return;
+
         // Check if running in Farcaster mini app environment
-        const isFarcasterMiniApp = window.parent !== window ||
-          !!window.location.href.match(/fc-frame=|warpcast\.com/i);
-        setIsMiniApp(isFarcasterMiniApp);
+        const miniAppDetected = detectMiniApp();
+        setIsMiniApp(miniAppDetected);
 
         // Get context from SDK
-        const frameContext = await sdk.context;
-        setContext(frameContext);
+        try {
+          const frameContext = await sdk.context;
 
-        // Check if the app is already added
-        if (frameContext?.client?.added) {
-          setAdded(true);
-          if (frameContext.client.notificationDetails) {
-            setNotificationDetails(frameContext.client.notificationDetails);
+          if (frameContext) {
+            setContext(frameContext);
+
+            // Check if the app is already added
+            if (frameContext?.client?.added) {
+              setAdded(true);
+              if (frameContext.client.notificationDetails) {
+                setNotificationDetails(frameContext.client.notificationDetails);
+              }
+            }
           }
+        } catch (contextError) {
+          console.warn("Non-critical error getting frame context:", contextError);
+          // This may fail in non-mini-app contexts, which is fine
         }
 
+        // Mark SDK as loaded
         setIsSDKLoaded(true);
 
         // Set up event listeners
@@ -137,13 +166,14 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
         });
 
         // Call ready action to signal frame is ready if in Mini App context
-        if (isFarcasterMiniApp) {
+        if (miniAppDetected) {
           console.log("Calling ready (Mini App detected)");
           try {
             await sdk.actions.ready({});
             console.log("Ready called successfully");
           } catch (readyError) {
             console.error("Error calling ready:", readyError);
+            // Not fatal, continue
           }
         }
       } catch (error) {
@@ -158,12 +188,17 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
       return () => {
         // Clean up event listeners on unmount
         if (sdk) {
-          sdk.removeAllListeners();
+          try {
+            sdk.removeAllListeners();
+          } catch (error) {
+            console.warn("Error removing listeners:", error);
+          }
         }
       };
     }
-  }, [isSDKLoaded]);
+  }, [isSDKLoaded, detectMiniApp]);
 
+  // Context value to be provided to child components
   const value: FrameContextType = {
     isSDKLoaded,
     context,

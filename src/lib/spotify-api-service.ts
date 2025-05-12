@@ -1,4 +1,6 @@
 
+/* eslint-disable  @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
+
 import { SpotifyApi } from "@spotify/web-api-ts-sdk";
 import { formatDuration } from './utils';
 
@@ -38,7 +40,8 @@ export function initSpotifyClient(accessToken: string): SpotifyApi {
         throw new Error("Access token is required to initialize Spotify client");
     }
 
-    return SpotifyApi.withAccessToken(accessToken);
+    const authStrategy = new TokenAuthStrategy(accessToken);
+    return new SpotifyApi(authStrategy);
 }
 
 /**

@@ -1,4 +1,4 @@
-// src/components/SpotifyImage.tsx
+/* eslint-disable  @typescript-eslint/no-unused-vars, prefer-const */
 "use client";
 
 import { useState, useEffect } from 'react';

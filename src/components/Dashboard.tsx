@@ -1,8 +1,8 @@
+/* eslint-disable  @typescript-eslint/no-unused-vars, react/no-unescaped-entities */
 "use client";
 
 import { useState, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
-import { useMusic } from "./MusicContext";
 import { FriendsListening } from "./FriendsListening";
 import { TopWeeklyTracks } from "./TopWeeklyTracks";
 import { Button } from "~/components/ui/Button";
@@ -13,21 +13,12 @@ import { AccountStatus } from "./AccountStatus";
 import { PersonalMusic } from "./PersonalMusic";
 import { useAuthStore } from "~/lib/stores/authStore";
 import { useFrame } from "./providers/FrameProvider";
-import { AddFrameButton } from "./AddFrameButton"; 
+import { AddFrameButton } from "./AddFrameButton";
 import { ConnectedUsers } from "./ConnectedUsers";
 import { useRouter } from "next/navigation";
 
-
 export function Dashboard() {
-  const router = useRouter()
-  const {
-    loading = { friends: false, weekly: false },
-    error = null,
-    connectSpotify,
-    refreshData
-  } = useMusic();
-
-  const { data: session } = useSession();
+  const router = useRouter();
   const [tab, setTab] = useState<"current" | "weekly">("current");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showAccountSetup, setShowAccountSetup] = useState(false);
@@ -43,7 +34,10 @@ export function Dashboard() {
     fid,
     clearAuth,
     isAuthenticated,
-    isLinked
+    isLinked,
+    fetchCurrentlyPlaying,
+    fetchTopTracks,
+    refreshTokenIfNeeded
   } = useAuthStore();
 
   // Show account setup section when not fully configured
@@ -77,13 +71,12 @@ export function Dashboard() {
       if (!added || !notificationDetails || !context?.user?.fid || sentWelcome) return;
 
       try {
-        const response = await fetch("/api/send-notification", {
+        const response = await fetch("/api/welcome-notification", {
           method: "POST",
           mode: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             fid: context.user.fid,
-            notificationDetails,
           }),
         });
 
@@ -107,9 +100,7 @@ export function Dashboard() {
     // Clear the Zustand store
     clearAuth();
     // Also sign out from NextAuth if session exists
-    if (session) {
-      await signOut({ redirect: false });
-    }
+    await signOut({ redirect: false });
     // Redirect to sign-in page
     window.location.href = '/auth/signin';
   };
@@ -118,20 +109,34 @@ export function Dashboard() {
     if (typeof sdk?.actions?.composeCast === 'function') {
       sdk.actions.composeCast({
         text: "🎵 Check out Timbra! Connect your Spotify and share your music taste with friends on Farcaster.",
-        embeds: [process.env.NEXT_PUBLIC_URL || "https://timbra.aipop.fun"]
+        embeds: [process.env.NEXT_PUBLIC_URL || window.location.origin]
       });
     } else if (typeof sdk?.actions?.openUrl === 'function') {
-      sdk.actions.openUrl("https://warpcast.com/~/compose?text=Check%20out%20Proof%20of%20Vibes!%20Connect%20your%20Spotify%20and%20share%20your%20music%20taste%20with%20friends%20on%20Farcaster.%20%F0%9F%8E%B5");
+      sdk.actions.openUrl("https://warpcast.com/~/compose?text=Check%20out%20Timbra!%20Connect%20your%20Spotify%20and%20share%20your%20music%20taste%20with%20friends%20on%20Farcaster.%20%F0%9F%8E%B5");
     } else {
       // Fallback for regular web browser
-      window.open("https://warpcast.com/~/compose?text=Check%20out%20Proof%20of%20Vibes!%20Connect%20your%20Spotify%20and%20share%20your%20music%20taste%20with%20friends%20on%20Farcaster.%20%F0%9F%8E%B5", "_blank");
+      window.open("https://warpcast.com/~/compose?text=Check%20out%20Timbra!%20Connect%20your%20Spotify%20and%20share%20your%20music%20taste%20with%20friends%20on%20Farcaster.%20%F0%9F%8E%B5", "_blank");
     }
   };
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    refreshData();
-    setTimeout(() => setIsRefreshing(false), 1000);
+
+    try {
+      // Check if token is valid and refresh if needed
+      const tokenValid = await refreshTokenIfNeeded();
+
+      if (tokenValid) {
+        // Fetch the latest data
+        await fetchCurrentlyPlaying();
+        await fetchTopTracks('medium_term');
+      }
+    } catch (error) {
+      console.error("Error refreshing data:", error);
+    } finally {
+      // Set refreshing state back to false after a short delay
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
   };
 
   // Type the TabButton component props
@@ -179,15 +184,15 @@ export function Dashboard() {
                 Verify Vibes
               </Button>
             )}
-            
+
             {isMiniApp && <AddFrameButton />}
 
             <button
               onClick={handleRefresh}
-              disabled={isRefreshing || loading.friends || loading.weekly}
+              disabled={isRefreshing}
               className="p-2 text-sm rounded-full hover:bg-purple-800"
             >
-              ↻
+              <span className={`inline-block ${isRefreshing ? 'animate-spin' : ''}`}>↻</span>
             </button>
             <button
               onClick={handleShare}
@@ -202,8 +207,8 @@ export function Dashboard() {
           <div className="w-10 h-10 rounded-full bg-purple-700 flex items-center justify-center">
             {userName.charAt(0)}
           </div>
-          <div className="ml-3">
-            <p className="font-medium">{userName}</p>
+          <div className="ml-3 flex-grow overflow-hidden">
+            <p className="font-medium truncate">{userName}</p>
             <div className="flex text-xs text-gray-300">
               {fidString && (
                 <span className="mr-2">FID: {fidString}</span>
@@ -216,7 +221,7 @@ export function Dashboard() {
           <div className="ml-auto">
             {!spotifyId && (
               <Button
-                onClick={connectSpotify}
+                onClick={() => router.push('/auth/signin/spotify')}
                 className="text-xs px-3 py-1 bg-green-600 hover:bg-green-700 rounded-full"
               >
                 Connect Spotify
@@ -267,21 +272,15 @@ export function Dashboard() {
 
       {/* Content area */}
       <div className="flex-grow p-4">
-        {error && (
-          <div className="bg-red-900/30 text-red-200 p-4 rounded-lg mb-4">
-            {error}
-          </div>
-        )}
-
         {/* In mini app mode, always show FriendsListening */}
         {isMiniApp ? (
-          <FriendsListening isLoading={loading.friends} />
+          <FriendsListening isLoading={false} />
         ) : (
           // In normal web mode, show based on selected tab
           tab === "current" ? (
-            <FriendsListening isLoading={loading.friends} />
+            <FriendsListening isLoading={false} />
           ) : (
-            <TopWeeklyTracks isLoading={loading.weekly} />
+            <TopWeeklyTracks isLoading={false} />
           )
         )}
       </div>

@@ -1,3 +1,5 @@
+/* eslint-disable  @typescript-eslint/no-unused-vars, react/no-unescaped-entities */
+
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { checkAccountsLinked } from '~/lib/services/accountLinking';

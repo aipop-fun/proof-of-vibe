@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any,  @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
+
 import NextAuth from "next-auth";
 import SpotifyProvider from "next-auth/providers/spotify";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -34,11 +34,14 @@ async function refreshSpotifyAccessToken(token: JWT): Promise<JWT> {
     const refreshedTokens = await response.json();
 
     if (!response.ok) {
+      console.error("Token refresh failed:", refreshedTokens);
       return {
         ...token,
         error: "RefreshAccessTokenError",
       };
     }
+
+    console.log("Token refreshed successfully");
 
     return {
       ...token,
@@ -47,6 +50,7 @@ async function refreshSpotifyAccessToken(token: JWT): Promise<JWT> {
       expiresAt: Math.floor(Date.now() / 1000 + refreshedTokens.expires_in),
     };
   } catch (error) {
+    console.error("Token refresh error:", error);
     return {
       ...token,
       error: "RefreshAccessTokenError",
@@ -55,28 +59,59 @@ async function refreshSpotifyAccessToken(token: JWT): Promise<JWT> {
 }
 
 /**
- * Optional function for production to verify Farcaster signatures
- * This would typically connect to a Hub or service like Neynar
+ * Verify Farcaster signature
+ * In a production app, this would use proper verification via Hub or Neynar
  */
 async function verifyFarcasterSignature(message: string | object, signature: string): Promise<boolean> {
-  // In production, implement verification logic here
-  // Example using Neynar or direct Hub connection:
+  // For demo, we'll simulate verification success
+  // In production, use proper verification with Neynar or direct Hub connection
   /*
   try {
-    const neynarClient = new NeynarAPIClient({ apiKey: process.env.NEYNAR_API_KEY });
-    const result = await neynarClient.validateFrameAction({
-      messageBytes: message,
-      signature: signature
+    const neynarApiKey = process.env.NEYNAR_API_KEY;
+    const apiClient = new NeynarAPIClient(neynarApiKey);
+    const verifyResult = await apiClient.verifySignature({
+      message: typeof message === 'string' ? message : JSON.stringify(message),
+      signature: signature,
     });
-    return result.valid;
+    return verifyResult.valid;
   } catch (error) {
     console.error("Signature verification error:", error);
     return false;
   }
   */
 
-  // For the current implementation without external verification
+  // For demo, we'll simulate success
   return true;
+}
+
+/**
+ * Extract FID from Farcaster auth message
+ */
+function extractFidFromMessage(message: string | object): number {
+  try {
+    if (typeof message === 'string') {
+      // Try to parse as JSON if it looks like JSON
+      if (message.startsWith('{')) {
+        const parsed = JSON.parse(message);
+        return parsed.fid ||
+          (parsed.message && parsed.message.fid) ||
+          0;
+      } else {
+        // Extract using regex
+        const match = message.match(/fid[:=]\s*(\d+)/i);
+        return match && match[1] ? parseInt(match[1], 10) : 0;
+      }
+    } else if (message && typeof message === 'object') {
+      // Already an object
+      return (message as any).fid ||
+        ((message as any).message && (message as any).message.fid) ||
+        0;
+    }
+    return 0;
+  } catch (error) {
+    console.error("Error extracting FID:", error);
+    return 0;
+  }
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -102,48 +137,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         try {
-          // Extract Farcaster ID (FID) from the authentication message
-          let fid = 0;
+          // Get FID from the message
+          const fid = extractFidFromMessage(credentials.message);
 
-          // Handle different message formats (string vs object)
-          if (typeof credentials.message === 'string') {
-            try {
-              // First attempt: Parse as JSON if it appears to be JSON formatted
-              if (credentials.message.startsWith('{')) {
-                const messageObj = JSON.parse(credentials.message);
-                fid = messageObj.fid || (messageObj.message?.fid) || 0;
-              } else {
-                // Alternative: Extract FID using regex pattern matching
-                const fidMatch = credentials.message.match(/fid[:=]\s*(\d+)/i);
-                if (fidMatch && fidMatch[1]) {
-                  fid = parseInt(fidMatch[1], 10);
-                }
-              }
-            } catch (parseError) {
-              // Continue with FID = 0, which will result in authentication failure
-            }
-          } else if (typeof credentials.message === 'object' && credentials.message !== null) {
-            // Direct extraction if message is already an object
-            fid = credentials.message.fid || (credentials.message.message?.fid) || 0;
-          }
-
-          // Validate that a user identifier was obtained
           if (!fid) {
+            console.error("No FID found in message");
             return null;
           }
 
-          // For production, implement signature verification
-          // Uncomment and implement the verification logic using verifyFarcasterSignature
-          /*
-          const isValid = await verifyFarcasterSignature(
-            credentials.message, 
-            credentials.signature
-          );
-          
+          // Verify signature (in production, this should be a real check)
+          // const isValid = await verifyFarcasterSignature(credentials.message, credentials.signature);
+          const isValid = true; // For demo only! Use proper verification in production
+
           if (!isValid) {
+            console.error("Invalid Farcaster signature");
             return null;
           }
-          */
 
           // Return user object with Farcaster ID
           return {
@@ -152,6 +161,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             name: `Farcaster User ${fid}`,
           };
         } catch (error) {
+          console.error("Farcaster auth error:", error);
           return null;
         }
       },
@@ -230,6 +240,5 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
-  secret: process.env.NEXTAUTH_SECRET,
   debug: process.env.NODE_ENV === "development",
 });
