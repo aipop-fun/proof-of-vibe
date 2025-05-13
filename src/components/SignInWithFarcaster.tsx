@@ -1,11 +1,11 @@
-/* eslint-disable   @typescript-eslint/no-unused-vars,  @typescript-eslint/ban-ts-comment, prefer-const,  react/no-unescaped-entities */
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/ban-ts-comment, prefer-const, react/no-unescaped-entities */
 // @ts-nocheck
 
 "use client";
 
 import { useCallback, useState, useEffect } from "react";
 import { signIn as nextAuthSignIn, getCsrfToken } from "next-auth/react";
-import sdk, { SignIn as SignInCore } from "@farcaster/frame-sdk";
+import { sdk, isInMiniApp } from "@farcaster/frame-sdk";
 import { Button } from "~/components/ui/Button";
 import { useAuthStore } from "~/lib/stores/authStore";
 import { useRouter } from "next/navigation";
@@ -28,34 +28,55 @@ export function SignInWithFarcaster() {
     // Access the authentication store
     const { setFarcasterAuth } = useAuthStore();
 
-    // Farcaster login URL para exibir no QR code
-    const baseURL = process.env.NEXT_PUBLIC_URL || window.location.origin;
-    const farcasterLoginUrl = `https://warpcast.com/~/sign-in-with-farcaster?${new URLSearchParams({ uri: `${baseURL}/auth/farcaster-callback` })}`;
+    // Generate state parameter for security (prevent CSRF)
+    const generateStateParam = () => {
+        return Math.random().toString(36).substring(2, 15);
+    };
+
+    // Construct login URL for QR code
+    const getLoginUrl = useCallback(() => {
+        const baseURL = process.env.NEXT_PUBLIC_URL || window.location.origin;
+        const state = generateStateParam();
+
+        // Store state in sessionStorage for verification in callback
+        if (typeof window !== 'undefined') {
+            sessionStorage.setItem('farcaster_auth_state', state);
+        }
+
+        // Create the callback URL with state parameter
+        const callbackUrl = `${baseURL}/auth/handle-auth`;
+
+        // Create the SIWF URL with proper parameters
+        return `https://warpcast.com/~/sign-in-with-farcaster?${new URLSearchParams({
+            uri: callbackUrl,
+            state: state
+        })}`;
+    }, []);
 
     // Verify SDK availability and detect environment after component mount
     useEffect(() => {
-        const checkSDK = async () => {
+        const checkEnvironment = async () => {
             try {
+                // Check if we're in a Mini App environment
+                const miniAppCheck = await isInMiniApp();
+                setIsMiniApp(miniAppCheck);
+
+                // Check if SDK is available and has signIn method
                 const sdkAvailable = typeof sdk !== 'undefined' &&
                     typeof sdk.actions !== 'undefined' &&
                     typeof sdk.actions.signIn === 'function';
 
-                // Detect if running as a mini app inside Farcaster
-                const isFarcasterMiniApp = window.parent !== window ||
-                    !!window.location.href.match(/fc-frame=|warpcast\.com/i);
-
                 setIsSDKReady(sdkAvailable);
-                setIsMiniApp(isFarcasterMiniApp);
 
-                // If we're in a mini app and SDK is available, try to get user context
-                if (sdkAvailable && isFarcasterMiniApp) {
+                // Auto-authenticate if we're in a mini app and SDK is available
+                if (sdkAvailable && miniAppCheck) {
                     try {
                         const context = await sdk.context;
                         if (context?.user?.fid) {
-                            // Buscar dados do usuário antes de autenticar
+                            // Fetch user data before authenticating
                             const userData = await fetchUserProfile(context.user.fid);
 
-                            // Auto-authenticate if we have user FID from context
+                            // Set auth information
                             setFarcasterAuth({
                                 fid: context.user.fid,
                                 username: userData?.username,
@@ -65,6 +86,7 @@ export function SignInWithFarcaster() {
                             // Notify frame we're ready
                             try {
                                 await sdk.actions.ready();
+                                router.push('/');
                             } catch (readyError) {
                                 console.error("Error calling ready:", readyError);
                             }
@@ -74,20 +96,20 @@ export function SignInWithFarcaster() {
                     }
                 }
 
-                // Prepare QR code for non-mini app logins
-                if (!isFarcasterMiniApp) {
-                    setQrValue(farcasterLoginUrl);
+                // Prepare QR code URL for non-mini app environments
+                if (!miniAppCheck) {
+                    setQrValue(getLoginUrl());
                 }
             } catch (error) {
-                console.error("Error checking SDK availability:", error);
+                console.error("Error checking environment:", error);
             }
         };
 
-        checkSDK();
-    }, [setFarcasterAuth, farcasterLoginUrl]);
+        checkEnvironment();
+    }, [setFarcasterAuth, getLoginUrl, router]);
 
     /**
-     * Função para buscar o perfil do usuário do Farcaster
+     * Function to fetch the user's Farcaster profile
      */
     const fetchUserProfile = async (fid) => {
         try {
@@ -112,12 +134,26 @@ export function SignInWithFarcaster() {
      */
     const getNonce = useCallback(async () => {
         try {
-            const nonce = await getCsrfToken();
+            // First try to use the NextAuth getCsrfToken function
+            let nonce = await getCsrfToken();
+
+            // If that fails, try our custom CSRF API route
+            if (!nonce) {
+                const response = await fetch('/api/auth/csrf');
+                if (!response.ok) {
+                    throw new Error("Failed to fetch CSRF token");
+                }
+                const data = await response.json();
+                nonce = data.csrfToken;
+            }
+
             if (!nonce) {
                 throw new Error("Failed to generate authentication token");
             }
+
             return nonce;
         } catch (error) {
+            console.error("Error getting CSRF token:", error);
             throw new Error("Error obtaining authentication token");
         }
     }, []);
@@ -130,7 +166,7 @@ export function SignInWithFarcaster() {
             setSigningIn(true);
             setSignInFailure(null);
 
-            // Se não estamos em mini app, mostrar QR code em vez de tentar login direto
+            // If not in mini app, show QR code instead of direct login
             if (!isMiniApp) {
                 setShowQRCode(true);
                 setSigningIn(false);
@@ -145,28 +181,26 @@ export function SignInWithFarcaster() {
             }
 
             // Check if we're in a mini app and have context
-            if (isMiniApp) {
-                try {
-                    const farcasterContext = await sdk.context;
-                    if (farcasterContext?.user?.fid) {
-                        // Buscar dados do usuário para ter username/displayName
-                        const userData = await fetchUserProfile(farcasterContext.user.fid);
+            try {
+                const farcasterContext = await sdk.context;
+                if (farcasterContext?.user?.fid) {
+                    // Fetch user data
+                    const userData = await fetchUserProfile(farcasterContext.user.fid);
 
-                        // We have FID directly from context
-                        setFarcasterAuth({
-                            fid: farcasterContext.user.fid,
-                            username: userData?.username,
-                            displayName: userData?.displayName
-                        });
+                    // We have FID directly from context
+                    setFarcasterAuth({
+                        fid: farcasterContext.user.fid,
+                        username: userData?.username,
+                        displayName: userData?.displayName
+                    });
 
-                        router.push('/');
-                        setSigningIn(false);
-                        return;
-                    }
-                } catch (contextError) {
-                    console.error("Failed to access Farcaster context:", contextError);
-                    // Continue with normal flow if context access fails
+                    router.push('/');
+                    setSigningIn(false);
+                    return;
                 }
+            } catch (contextError) {
+                console.error("Failed to access Farcaster context:", contextError);
+                // Continue with normal flow if context access fails
             }
 
             // Obtain security token
@@ -221,7 +255,7 @@ export function SignInWithFarcaster() {
                     throw new Error("Could not identify your Farcaster account");
                 }
 
-                // Buscar dados do usuário para ter username/displayName
+                // Fetch user data to get username/displayName
                 const userData = await fetchUserProfile(fid);
 
                 // Store authentication data
@@ -246,7 +280,7 @@ export function SignInWithFarcaster() {
                 router.push('/');
             } catch (error) {
                 // Handle specific error types with appropriate user messaging
-                if (error instanceof SignInCore.RejectedByUser) {
+                if (error.name === "RejectedByUser") {
                     setSignInFailure("Authentication rejected by user");
                 } else if (error.message?.includes("Cannot read properties of undefined")) {
                     setSignInFailure("Communication error with Farcaster. Please try again in a compatible browser.");
@@ -259,7 +293,7 @@ export function SignInWithFarcaster() {
         } finally {
             setSigningIn(false);
         }
-    }, [getNonce, isSDKReady, isMiniApp, setFarcasterAuth, router]);
+    }, [getNonce, isSDKReady, isMiniApp, setFarcasterAuth, router, fetchUserProfile]);
 
     return (
         <div className="flex flex-col items-center">
@@ -287,14 +321,12 @@ export function SignInWithFarcaster() {
                 <>
                     <Button
                         onClick={handleSignIn}
-                        disabled={signingIn || !isSDKReady}
+                        disabled={signingIn}
                         className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-full font-medium w-full"
                     >
                         {signingIn
                             ? "Signing in..."
-                            : !isSDKReady
-                                ? "Initializing..."
-                                : "Sign in with Farcaster"}
+                            : "Sign in with Farcaster"}
                     </Button>
 
                     {signInFailure && (
