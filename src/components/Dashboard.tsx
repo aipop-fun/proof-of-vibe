@@ -25,6 +25,7 @@ export function Dashboard() {
   const [showAccountSetup, setShowAccountSetup] = useState(false);
   const [sentWelcome, setSentWelcome] = useState(false);
   const [showSpotifyConnect, setShowSpotifyConnect] = useState(false);
+  const [userDisplayName, setUserDisplayName] = useState<string | null>(null);
 
   // Get context from FrameProvider
   const { isMiniApp, context, added, notificationDetails } = useFrame();
@@ -41,6 +42,28 @@ export function Dashboard() {
     fetchTopTracks,
     refreshTokenIfNeeded
   } = useAuthStore();
+
+  // Buscar dados do usuário do Farcaster quando temos FID mas não temos nome
+  useEffect(() => {
+    const fetchUserData = async () => {
+      if (fid && !userDisplayName && !spotifyUser?.name) {
+        try {
+          const response = await fetch(`/api/neynar/search?query=${fid}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.users && data.users.length > 0) {
+              const userData = data.users[0];
+              setUserDisplayName(userData.displayName || userData.username);
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+        }
+      }
+    };
+
+    fetchUserData();
+  }, [fid, userDisplayName, spotifyUser]);
 
   // Determinar se precisa mostrar a tela de conexão do Spotify
   useEffect(() => {
@@ -179,8 +202,8 @@ export function Dashboard() {
     </button>
   );
 
-  // Safely extract user information with fallbacks using Zustand
-  const userName = spotifyUser?.name || "Vibe Friend";
+  // Safely extract user information with fallbacks using Zustand and state
+  const userName = spotifyUser?.name || userDisplayName || "Vibe Friend";
   const fidString = fid ? String(fid) : "";
 
   // Se estiver mostrando a tela de conexão do Spotify, renderizar apenas ela
