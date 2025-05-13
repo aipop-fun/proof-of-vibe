@@ -30,38 +30,38 @@ export async function GET(request: NextRequest) {
     const client = getNeynarClient();
 
     // Fetch followers using Neynar SDK
-    // Note: fetchUserFollowers uses an object parameter with fid, limit, cursor properties
-    const response = await client.fetchUserFollowers({
+    const result = await client.fetchUserFollowers({
       fid,
       limit,
       cursor
     });
 
-    // Transform the response to our expected format
-    const users = response.result.users.map(user => ({
-      fid: user.fid,
-      username: user.username || `user${user.fid}`,
-      displayName: user.displayName || user.username || `User ${user.fid}`,
-      pfp: user.pfp?.url || null,
-      followerCount: user.followerCount,
-      followingCount: user.followingCount,
-      lastActive: user.timestamp ? new Date(user.timestamp).getTime() : undefined,
-      isFollower: true
-    }));
-
-    // Check if cursor exists in response before trying to access it
-    const nextCursor = response.result.next?.cursor || null;
+    // The actual structure is different - each item in the 'users' array has a 'user' property
+    // that contains the actual user data
+    const transformedUsers = result.users.map(item => {
+      const user = item.user;
+      return {
+        fid: user.fid,
+        username: user.username || `user${user.fid}`,
+        displayName: user.display_name || user.username || `User ${user.fid}`,
+        pfp: user.pfp_url || null,
+        followerCount: user.follower_count,
+        followingCount: user.following_count,
+        lastActive: user.last_active_ts ? new Date(user.last_active_ts).getTime() : undefined,
+        isFollower: true
+      };
+    });
 
     return NextResponse.json({
-      users,
-      nextCursor,
-      total: response.result.count || users.length
+      users: transformedUsers,
+      nextCursor: result.next?.cursor || null,
+      total: transformedUsers.length
     });
 
   } catch (error) {
     console.error("Error fetching followers:", error);
     return NextResponse.json(
-      { error: "Failed to fetch followers", details: error instanceof Error ? error.message : String(error) },
+      { error: "Failed to fetch followers" },
       { status: 500 }
     );
   }
