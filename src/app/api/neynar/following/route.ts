@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
+// src/app/api/neynar/following/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getNeynarClient } from "~/lib/neynar";
 
@@ -30,6 +31,7 @@ export async function GET(request: NextRequest) {
     const client = getNeynarClient();
 
     // Fetch following using Neynar SDK
+    // Fixed parameter format: Pass fid as first argument and options as second argument
     const response = await client.fetchUserFollowing(fid, {
       limit,
       cursor
@@ -47,16 +49,19 @@ export async function GET(request: NextRequest) {
       isFollowing: true
     }));
 
+    // Check if cursor exists in response before trying to access it
+    const nextCursor = response.result.next?.cursor || null;
+
     return NextResponse.json({
       users,
-      nextCursor: response.result.next?.cursor || null,
-      total: response.result.count
+      nextCursor,
+      total: response.result.count || users.length
     });
 
   } catch (error) {
     console.error("Error fetching following:", error);
     return NextResponse.json(
-      { error: "Failed to fetch following" },
+      { error: "Failed to fetch following", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

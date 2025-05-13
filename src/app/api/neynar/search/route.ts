@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
+// src/app/api/neynar/search/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getNeynarClient } from "~/lib/neynar";
 
@@ -26,21 +27,22 @@ export async function GET(request: NextRequest) {
     if (isFid) {
       // Try to fetch user by FID
       try {
+        const fid = parseInt(query, 10);
         const response = await client.fetchBulkUsers({
-          fids: [parseInt(query)]
+          fids: [fid]
         });
 
-        if (response.users.length > 0) {
+        if (response.users && response.users.length > 0) {
           const user = response.users[0];
-          
+
           return NextResponse.json({
             users: [{
               fid: user.fid,
               username: user.username || `user${user.fid}`,
               displayName: user.display_name || user.username || `User ${user.fid}`,
               pfp: user.pfp_url || null,
-              followerCount: user.follower_count,
-              followingCount: user.following_count
+              followerCount: user.follower_count || 0,
+              followingCount: user.following_count || 0
             }],
             total: 1
           });
@@ -63,8 +65,8 @@ export async function GET(request: NextRequest) {
       username: user.username || `user${user.fid}`,
       displayName: user.displayName || user.username || `User ${user.fid}`,
       pfp: user.pfp?.url || null,
-      followerCount: user.followerCount,
-      followingCount: user.followingCount,
+      followerCount: user.followerCount || 0,
+      followingCount: user.followingCount || 0,
       lastActive: user.timestamp ? new Date(user.timestamp).getTime() : undefined
     }));
 
@@ -76,7 +78,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Error searching users:", error);
     return NextResponse.json(
-      { error: "Failed to search users" },
+      { error: "Failed to search users", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

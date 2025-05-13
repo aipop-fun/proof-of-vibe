@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
-
 // @ts-nocheck
 import { NextRequest, NextResponse } from "next/server";
 import { getNeynarClient } from "~/lib/neynar";
@@ -31,6 +30,7 @@ export async function GET(request: NextRequest) {
     const client = getNeynarClient();
 
     // Fetch followers using Neynar SDK
+    // Note: fetchUserFollowers uses an object parameter with fid, limit, cursor properties
     const response = await client.fetchUserFollowers({
       fid,
       limit,
@@ -49,16 +49,19 @@ export async function GET(request: NextRequest) {
       isFollower: true
     }));
 
+    // Check if cursor exists in response before trying to access it
+    const nextCursor = response.result.next?.cursor || null;
+
     return NextResponse.json({
       users,
-      nextCursor: response.result.next?.cursor || null,
-      total: response.result.count
+      nextCursor,
+      total: response.result.count || users.length
     });
 
   } catch (error) {
     console.error("Error fetching followers:", error);
     return NextResponse.json(
-      { error: "Failed to fetch followers" },
+      { error: "Failed to fetch followers", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }
