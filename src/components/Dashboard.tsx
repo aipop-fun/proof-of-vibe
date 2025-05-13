@@ -15,6 +15,7 @@ import { useAuthStore } from "~/lib/stores/authStore";
 import { useFrame } from "./providers/FrameProvider";
 import { AddFrameButton } from "./AddFrameButton";
 import { ConnectedUsers } from "./ConnectedUsers";
+import { SpotifyConnect } from "./SpotifyConnect";
 import { useRouter } from "next/navigation";
 
 export function Dashboard() {
@@ -23,6 +24,7 @@ export function Dashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showAccountSetup, setShowAccountSetup] = useState(false);
   const [sentWelcome, setSentWelcome] = useState(false);
+  const [showSpotifyConnect, setShowSpotifyConnect] = useState(false);
 
   // Get context from FrameProvider
   const { isMiniApp, context, added, notificationDetails } = useFrame();
@@ -39,6 +41,16 @@ export function Dashboard() {
     fetchTopTracks,
     refreshTokenIfNeeded
   } = useAuthStore();
+
+  // Determinar se precisa mostrar a tela de conexão do Spotify
+  useEffect(() => {
+    // No mini app, se temos FID (Farcaster) mas não temos Spotify, mostrar o componente de conexão
+    if (isMiniApp && fid && !spotifyId) {
+      setShowSpotifyConnect(true);
+    } else {
+      setShowSpotifyConnect(false);
+    }
+  }, [isMiniApp, fid, spotifyId]);
 
   // Show account setup section when not fully configured
   useEffect(() => {
@@ -139,6 +151,16 @@ export function Dashboard() {
     }
   };
 
+  const handleConnectSpotify = () => {
+    if (isMiniApp) {
+      // No mini app, abrir tela de conexão em vez de redirecionar
+      setShowSpotifyConnect(true);
+    } else {
+      // No navegador normal, redirecionar para página de login do Spotify
+      router.push('/auth/signin/spotify');
+    }
+  };
+
   // Type the TabButton component props
   interface TabButtonProps {
     id: "current" | "weekly";
@@ -161,6 +183,11 @@ export function Dashboard() {
   const userName = spotifyUser?.name || "Vibe Friend";
   const fidString = fid ? String(fid) : "";
 
+  // Se estiver mostrando a tela de conexão do Spotify, renderizar apenas ela
+  if (showSpotifyConnect) {
+    return <SpotifyConnect onBack={() => setShowSpotifyConnect(false)} />;
+  }
+
   return (
     <div
       className="flex flex-col min-h-screen w-full max-w-md mx-auto"
@@ -172,17 +199,21 @@ export function Dashboard() {
       } : {}}
     >
       {/* Header */}
-      <div className="px-4 py-6">
+      <div className="px-4 py-3">
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold">Timbra</h1>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             {isAuthenticated && isLinked && (
-              <Button
+              <button
                 onClick={() => router.push('/generate-proof')}
-                className="text-xs px-3 py-1 bg-purple-600 hover:bg-purple-700"
+                className="text-xs p-1.5 bg-purple-600 hover:bg-purple-700 rounded-full"
+                title="Verify Vibes"
               >
-                Verify Vibes
-              </Button>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </button>
             )}
 
             {isMiniApp && <AddFrameButton />}
@@ -190,20 +221,34 @@ export function Dashboard() {
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="p-2 text-sm rounded-full hover:bg-purple-800"
+              className="p-1.5 text-sm rounded-full hover:bg-purple-800"
+              title="Refresh"
             >
-              <span className={`inline-block ${isRefreshing ? 'animate-spin' : ''}`}>↻</span>
+              <span className={`inline-block ${isRefreshing ? 'animate-spin' : ''}`}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                  <path d="M3 3v5h5" />
+                  <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+                  <path d="M16 21h5v-5" />
+                </svg>
+              </span>
             </button>
+
             <button
               onClick={handleShare}
-              className="p-2 text-sm rounded-full hover:bg-purple-800"
+              className="p-1.5 text-sm rounded-full hover:bg-purple-800"
+              title="Share"
             >
-              Share
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                <polyline points="16 6 12 2 8 6" />
+                <line x1="12" y1="2" x2="12" y2="15" />
+              </svg>
             </button>
           </div>
         </div>
 
-        <div className="mt-4 flex items-center">
+        <div className="mt-3 flex items-center">
           <div className="w-10 h-10 rounded-full bg-purple-700 flex items-center justify-center">
             {userName.charAt(0)}
           </div>
@@ -221,10 +266,18 @@ export function Dashboard() {
           <div className="ml-auto">
             {!spotifyId && (
               <Button
-                onClick={() => router.push('/auth/signin/spotify')}
-                className="text-xs px-3 py-1 bg-green-600 hover:bg-green-700 rounded-full"
+                onClick={handleConnectSpotify}
+                className={`text-xs px-2 py-1 bg-green-600 hover:bg-green-700 rounded-full flex items-center ${isMiniApp ? 'gap-0.5' : 'gap-1'}`}
               >
-                Connect Spotify
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <circle cx="12" cy="12" r="4" />
+                  <line x1="12" y1="6" x2="12" y2="8" />
+                  <line x1="12" y1="16" x2="12" y2="18" />
+                  <line x1="6" y1="12" x2="8" y2="12" />
+                  <line x1="16" y1="12" x2="18" y2="12" />
+                </svg>
+                {!isMiniApp && "Connect Spotify"}
               </Button>
             )}
           </div>

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
+/* eslint-disable @typescript-eslint/ban-ts-comment,  @typescript-eslint/no-unused-vars */
 // @ts-nocheck
 import { NextRequest, NextResponse } from "next/server";
 import { getNeynarClient } from "~/lib/neynar";

@@ -29,6 +29,18 @@ interface SpotifyTrack {
 
 export type TimeRange = 'short_term' | 'medium_term' | 'long_term';
 
+// Interface para resposta da API de vinculação de contas
+interface LinkAccountsResponse {
+    success: boolean;
+    error?: string;
+    user?: {
+        id: string;
+        fid: number;
+        spotify_id: string;
+        display_name?: string;
+    };
+}
+
 // Main auth store state interface
 interface AuthState {
     // Auth state
@@ -70,18 +82,21 @@ interface AuthState {
     setLinkedStatus: (status: boolean) => void;
     checkLinkedStatus: () => Promise<void>;
     setLinkingError: (error: string | null) => void;
+
+    // Nova função para vincular contas
+    linkAccounts: (fid: number, spotifyId: string) => Promise<LinkAccountsResponse>;
+
     setSpotifyAuth: (data: {
         accessToken: string;
         refreshToken: string;
-        expiresAt: number;
+        expiresIn: number;
+        tokenTimestamp: number;
         spotifyId: string;
-        user?: {
-            id: string;
-            name: string;
-            email?: string;
-            image?: string;
-        };
-    }) => Promise<void>;
+        displayName?: string;
+        email?: string;
+        profileImage?: string;
+    }) => void;
+
     setFarcasterAuth: (data: { fid: number }) => Promise<void>;
     clearAuth: () => void;
     isExpired: () => boolean;
@@ -211,6 +226,52 @@ export const useAuthStore = create<AuthState>()(
             setLinkedStatus: (status) => set({ isLinked: status }),
             setLinkingError: (error) => set({ linkingError: error }),
 
+            // Nova função para vincular contas Farcaster e Spotify
+            linkAccounts: async (fid, spotifyId) => {
+                try {
+                    console.log(`Linking accounts for FID: ${fid} and Spotify ID: ${spotifyId}`);
+
+                    // Fazer a chamada para a API de vinculação de contas
+                    const response = await fetch("/api/auth/link-accounts", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({ fid, spotifyId }),
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok && data.success) {
+                        // Atualizar o estado para mostrar que as contas estão vinculadas
+                        set({ isLinked: true, linkingError: null });
+
+                        return {
+                            success: true,
+                            user: data.user
+                        };
+                    } else {
+                        // Se houver um erro na vinculação, atualizar o estado de erro
+                        const errorMessage = data.error || "Failed to link accounts";
+                        set({ linkingError: errorMessage });
+
+                        return {
+                            success: false,
+                            error: errorMessage
+                        };
+                    }
+                } catch (error) {
+                    console.error("Error linking accounts:", error);
+                    const errorMessage = error instanceof Error ? error.message : "Unknown error linking accounts";
+                    set({ linkingError: errorMessage });
+
+                    return {
+                        success: false,
+                        error: errorMessage
+                    };
+                }
+            },
+
             checkLinkedStatus: async () => {
                 const state = get();
                 if (!state.fid && !state.spotifyId) return;
@@ -224,20 +285,28 @@ export const useAuthStore = create<AuthState>()(
             },
 
             // Authentication functions
-            setSpotifyAuth: async (data) => {
+            setSpotifyAuth: (data) => {
+                // Calcular o timestamp de expiração baseado no expiresIn
+                const expiresAt = Math.floor((data.tokenTimestamp + (data.expiresIn * 1000)) / 1000);
+
                 set({
                     accessToken: data.accessToken,
                     refreshToken: data.refreshToken,
-                    expiresAt: data.expiresAt,
+                    expiresAt: expiresAt,
                     spotifyId: data.spotifyId,
-                    spotifyUser: data.user || null,
+                    spotifyUser: {
+                        id: data.spotifyId,
+                        name: data.displayName || data.spotifyId,
+                        email: data.email,
+                        image: data.profileImage,
+                    },
                     isAuthenticated: true,
                 });
 
                 // Check if accounts are linked after setting Spotify auth
                 const state = get();
                 if (state.fid) {
-                    await get().checkLinkedStatus();
+                    get().checkLinkedStatus();
                 }
             },
 
