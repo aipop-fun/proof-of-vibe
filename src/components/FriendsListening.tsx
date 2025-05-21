@@ -4,15 +4,22 @@
 "use client";
 
 import { FC, useEffect, useState } from 'react';
+import Image from 'next/image';
 import { useMusic } from "../lib/MusicContext";
 import sdk from "@farcaster/frame-sdk";
 import { useFrame } from "./providers/FrameProvider";
 
-// Define a more flexible interface that can handle different data structures
+
 interface FriendListeningItem {
   id: string;
   timestamp?: number | string;
-  [key: string]: any;
+  fid?: number | string;
+  username?: string;
+  name?: string;
+  displayName?: string;
+  profileImage?: string;
+  avatar?: string;
+  pfp?: string;
   track?: {
     title: string;
     artist: string;
@@ -35,32 +42,31 @@ export const FriendsListening: FC<FriendsListeningProps> = ({ isLoading: propIsL
   const [refreshing, setRefreshing] = useState(false);
   const { isMiniApp } = useFrame();
 
-  // Combinamos o estado de carregamento das props e do contexto
+  
   const isLoading = propIsLoading || contextIsLoading || refreshing;
 
-  // Pull-to-refresh funcionalidade
+  
   useEffect(() => {
+    if (!isMiniApp || typeof sdk?.events?.onPullToRefresh !== 'function') return;
+
     const handleRefresh = async () => {
       if (refreshing) return;
 
       setRefreshing(true);
       await refreshFriendsListening();
-      setTimeout(() => setRefreshing(false), 500); // Delay para feedback visual
+      setTimeout(() => setRefreshing(false), 500); // Visual feedback delay
     };
 
-    // Se estamos no MiniApp, podemos escutar eventos de pull-to-refresh
-    if (isMiniApp && typeof sdk?.events?.onPullToRefresh === 'function') {
-      sdk.events.onPullToRefresh(handleRefresh);
-    }
+    sdk.events.onPullToRefresh(handleRefresh);
 
     return () => {
-      // Limpar listener quando componente desmontar
-      if (isMiniApp && typeof sdk?.events?.offPullToRefresh === 'function') {
+      if (typeof sdk?.events?.offPullToRefresh === 'function') {
         sdk.events.offPullToRefresh(handleRefresh);
       }
     };
   }, [isMiniApp, refreshFriendsListening, refreshing]);
 
+  
   const formatTimestamp = (timestamp: number | string | undefined): string => {
     if (timestamp == null) return 'Just now';
 
@@ -74,12 +80,14 @@ export const FriendsListening: FC<FriendsListeningProps> = ({ isLoading: propIsL
     return `${Math.floor(diff / 86400)} days ago`;
   };
 
+  
   const viewProfile = (fid?: number | string): void => {
     if (fid && typeof sdk?.actions?.viewProfile === 'function') {
       sdk.actions.viewProfile({ fid: Number(fid) });
     }
   };
 
+  
   const getProfileName = (friend: FriendListeningItem): string => {
     return (
       friend.name ||
@@ -102,15 +110,15 @@ export const FriendsListening: FC<FriendsListeningProps> = ({ isLoading: propIsL
     return (
       track?.albumArt ||
       track?.coverArt ||
-      '/default-album-art.png'
+      '/api/placeholder/60/60'
     );
   };
 
-  // Função para abrir o Spotify quando clicar na música
+  
   const openInSpotify = (track?: FriendListeningItem['track']) => {
     if (!track) return;
 
-    // Simulação - em produção você teria o href real para a faixa no Spotify
+  
     const spotifyUrl = `https://open.spotify.com/search/${encodeURIComponent(`${track.title} ${track.artist}`)}`;
 
     if (isMiniApp && typeof sdk?.actions?.openUrl === 'function') {
@@ -120,6 +128,7 @@ export const FriendsListening: FC<FriendsListeningProps> = ({ isLoading: propIsL
     }
   };
 
+  
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -130,6 +139,7 @@ export const FriendsListening: FC<FriendsListeningProps> = ({ isLoading: propIsL
     );
   }
 
+  
   if (friendsListening.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64">
@@ -148,21 +158,26 @@ export const FriendsListening: FC<FriendsListeningProps> = ({ isLoading: propIsL
     );
   }
 
+  
   return (
     <div className="space-y-4">
       {friendsListening.map((friend) => (
         <div key={friend.id} className="bg-purple-800/30 p-4 rounded-lg flex">
+          {/* Profile image */}
           <div
-            className="w-12 h-12 rounded-full bg-purple-700 cursor-pointer flex-shrink-0 overflow-hidden"
+            className="w-12 h-12 rounded-full bg-purple-700 cursor-pointer flex-shrink-0 overflow-hidden relative"
             onClick={() => viewProfile(friend.fid)}
           >
-            <img
+            <Image
               src={getProfileImage(friend)}
               alt={getProfileName(friend)}
-              className="w-12 h-12 rounded-full object-cover"
+              fill
+              sizes="48px"
+              className="object-cover"
             />
           </div>
 
+          {/* User and track info */}
           <div className="ml-3 flex-grow">
             <div className="flex justify-between items-start">
               <div>
@@ -181,19 +196,22 @@ export const FriendsListening: FC<FriendsListeningProps> = ({ isLoading: propIsL
               </span>
             </div>
 
+            {/* Track details */}
             {friend.track && (
               <div className="mt-2 flex items-center">
                 <div
-                  className="w-10 h-10 bg-gray-800 rounded mr-2 flex-shrink-0 cursor-pointer"
+                  className="w-10 h-10 bg-gray-800 rounded mr-2 flex-shrink-0 cursor-pointer relative"
                   onClick={() => openInSpotify(friend.track)}
                 >
-                  <img
+                  <Image
                     src={getTrackImage(friend.track)}
                     alt={friend.track.album || friend.track.title}
-                    className="w-10 h-10 rounded"
+                    fill
+                    sizes="40px"
+                    className="rounded object-cover"
                   />
                 </div>
-                <div className="flex-grow">
+                <div className="flex-grow min-w-0">
                   <p
                     className="text-sm font-medium truncate cursor-pointer hover:underline"
                     onClick={() => openInSpotify(friend.track)}
@@ -220,11 +238,16 @@ export const FriendsListening: FC<FriendsListeningProps> = ({ isLoading: propIsL
         </div>
       ))}
 
-      {/* Botão para carregar mais */}
+      {/* Refresh button */}
       {friendsListening.length >= 5 && (
         <div className="flex justify-center mt-4">
           <button
-            onClick={refreshFriendsListening}
+            onClick={() => {
+              setRefreshing(true);
+              refreshFriendsListening().finally(() => {
+                setTimeout(() => setRefreshing(false), 500);
+              });
+            }}
             className="px-4 py-2 text-sm bg-purple-800/50 hover:bg-purple-700/50 rounded-full"
           >
             {refreshing ? 'Refreshing...' : 'Refresh'}

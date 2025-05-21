@@ -15,6 +15,7 @@ export interface SpotifyTrack {
     album?: string;
     coverArt?: string;
     duration?: string;
+    currentTime?: string;
     popularity?: number;
     uri?: string;
     progressMs?: number;

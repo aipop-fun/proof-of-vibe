@@ -29,6 +29,27 @@ interface SpotifyTrack {
 
 export type TimeRange = 'short_term' | 'medium_term' | 'long_term';
 
+export interface UserTrackData {
+    id: string;
+    fid: number;
+    spotifyId?: string;
+    username?: string;
+    displayName?: string;
+    timestamp: number;
+    track: {
+        id: string;
+        title: string;
+        artist: string;
+        album?: string;
+        coverArt?: string;
+        albumArt?: string;
+        type?: string;
+        isPlaying?: boolean;
+        currentTime?: string;
+        duration?: string;
+    };
+}
+
 // Interface para resposta da API de vinculação de contas
 interface LinkAccountsResponse {
     success: boolean;
@@ -76,7 +97,12 @@ interface AuthState {
     isLoadingConnections: boolean;
     userTopTracks: Record<number, SpotifyTrack[]>;
 
+    userTracks: Record<string, UserTrackData>; // keyed by fid or spotifyId
+    loadingUserTracks: Record<string, boolean>;
+    userTracksError: Record<string, string | null>;
+
     // Functions
+    fetchUserCurrentTrack: (fidOrSpotifyId: number | string) => Promise<UserTrackData | null>;
     fetchConnectedUsers: () => Promise<void>;
     fetchUserTopTracks: (fid: number) => Promise<void>;
     setLinkedStatus: (status: boolean) => void;
@@ -113,6 +139,10 @@ export const useAuthStore = create<AuthState>()(
     persist(
         (set, get) => ({
             // Initial auth state
+            userTracks: {},
+            loadingUserTracks: {},
+            userTracksError: {},
+
             accessToken: null,
             refreshToken: null,
             expiresAt: null,
@@ -142,6 +172,103 @@ export const useAuthStore = create<AuthState>()(
             connectedUsers: [],
             isLoadingConnections: false,
             userTopTracks: {},
+
+            fetchUserCurrentTrack: async (fidOrSpotifyId) => {
+                const state = get();
+                const key = String(fidOrSpotifyId);
+
+                // Set loading state
+                set(state => ({
+                    loadingUserTracks: {
+                        ...state.loadingUserTracks,
+                        [key]: true
+                    },
+                    userTracksError: {
+                        ...state.userTracksError,
+                        [key]: null
+                    }
+                }));
+
+                try {
+                    // Determine parameter type
+                    const isNumber = !isNaN(Number(fidOrSpotifyId));
+                    const queryParam = isNumber ? `fid=${fidOrSpotifyId}` : `spotify_id=${fidOrSpotifyId}`;
+
+                    // Add token if it's the current user
+                    const currentUserFid = state.fid;
+                    const currentUserSpotifyId = state.spotifyId;
+                    let tokenParam = '';
+
+                    if (
+                        (isNumber && Number(fidOrSpotifyId) === currentUserFid) ||
+                        (!isNumber && fidOrSpotifyId === currentUserSpotifyId)
+                    ) {
+                        tokenParam = `&token=${state.accessToken}`;
+                    }
+
+                    // Call the API
+                    const response = await fetch(`/api/user-track?${queryParam}${tokenParam}`);
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Failed to fetch user track');
+                    }
+
+                    const data = await response.json();
+
+                    // Update state with the track data
+                    const trackData: UserTrackData = {
+                        id: data.id || `user-${key}`,
+                        fid: data.fid || (isNumber ? Number(fidOrSpotifyId) : 0),
+                        spotifyId: data.spotifyId,
+                        username: data.username,
+                        displayName: data.displayName,
+                        timestamp: data.timestamp || Date.now(),
+                        track: {
+                            id: data.track.id,
+                            title: data.track.title,
+                            artist: data.track.artist,
+                            album: data.track.album,
+                            coverArt: data.track.coverArt || data.track.albumArt,
+                            albumArt: data.track.albumArt,
+                            type: data.track.type,
+                            isPlaying: data.track.isPlaying,
+                            currentTime: data.track.currentTime,
+                            duration: data.track.duration
+                        }
+                    };
+
+                    // Update store
+                    set(state => ({
+                        userTracks: {
+                            ...state.userTracks,
+                            [key]: trackData
+                        },
+                        loadingUserTracks: {
+                            ...state.loadingUserTracks,
+                            [key]: false
+                        }
+                    }));
+
+                    return trackData;
+                } catch (error) {
+                    console.error(`Error fetching track for user ${fidOrSpotifyId}:`, error);
+
+                    // Update error state
+                    set(state => ({
+                        loadingUserTracks: {
+                            ...state.loadingUserTracks,
+                            [key]: false
+                        },
+                        userTracksError: {
+                            ...state.userTracksError,
+                            [key]: error instanceof Error ? error.message : 'Failed to fetch track'
+                        }
+                    }));
+
+                    return null;
+                }
+            },
 
             // Functions for fetching data from backend/API
             fetchConnectedUsers: async () => {

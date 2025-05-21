@@ -1,10 +1,28 @@
-/* eslint-disable   @typescript-eslint/no-unused-vars, @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
 
-import { SpotifyTrack, TimeRange } from './stores/spotifyDataStore';
+// Define TimeRange type here instead of importing it from a non-existent path
+export type TimeRange = 'short_term' | 'medium_term' | 'long_term';
+
+// Define SpotifyTrack interface
+export interface SpotifyTrack {
+    id: string;
+    title: string;
+    artist: string;
+    album?: string;
+    coverArt?: string;
+    duration?: string;
+    currentTime?: string;
+    popularity?: number;
+    uri?: string;
+    progressMs?: number;
+    durationMs?: number;
+    isPlaying?: boolean;
+    type?: string;
+}
 
 /**
- * Formata a duração em milissegundos para o formato mm:ss
+ * Format duration in milliseconds to mm:ss format
  */
 export function formatDuration(ms: number): string {
     if (!ms) return '0:00';
@@ -15,7 +33,7 @@ export function formatDuration(ms: number): string {
 }
 
 /**
- * Obtém o token de acesso via refresh token
+ * Get access token via refresh token
  */
 export async function refreshAccessToken(refreshToken: string): Promise<{
     accessToken: string;
@@ -25,9 +43,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<{
     try {
         const response = await fetch('/api/auth/refresh', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refreshToken }),
         });
 
@@ -37,7 +53,6 @@ export async function refreshAccessToken(refreshToken: string): Promise<{
         }
 
         const data = await response.json();
-
         return {
             accessToken: data.access_token,
             refreshToken: data.refresh_token || refreshToken,
@@ -50,16 +65,13 @@ export async function refreshAccessToken(refreshToken: string): Promise<{
 }
 
 /**
- * Valida se o token de acesso está ativo
+ * Validate if the access token is active
  */
 export async function validateToken(accessToken: string): Promise<boolean> {
     try {
         const response = await fetch('https://api.spotify.com/v1/me', {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-            },
+            headers: { 'Authorization': `Bearer ${accessToken}` },
         });
-
         return response.ok;
     } catch (error) {
         console.error('Token validation error:', error);
@@ -68,22 +80,18 @@ export async function validateToken(accessToken: string): Promise<boolean> {
 }
 
 /**
- * Obtém a faixa em reprodução atualmente
+ * Get the currently playing track
  */
 export async function getCurrentlyPlaying(accessToken: string): Promise<SpotifyTrack | null> {
     try {
         const response = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-            },
+            headers: { 'Authorization': `Bearer ${accessToken}` },
         });
 
-        // Se não houver nada tocando (204 No Content)
-        if (response.status === 204) {
-            return null;
-        }
+        // If nothing is playing (204 No Content)
+        if (response.status === 204) return null;
 
-        // Se houver um erro na requisição
+        // If there is an error in the request
         if (!response.ok) {
             const errorText = await response.text();
             throw new Error(`API Error (${response.status}): ${errorText}`);
@@ -91,12 +99,10 @@ export async function getCurrentlyPlaying(accessToken: string): Promise<SpotifyT
 
         const data = await response.json();
 
-        // Se não houver dados ou o item for nulo
-        if (!data || !data.item) {
-            return null;
-        }
+        // If there is no data or the item is null
+        if (!data || !data.item) return null;
 
-        // Formatar os dados da faixa
+        // Format the track data
         const track = data.item;
         return {
             id: track.id,
@@ -119,18 +125,14 @@ export async function getCurrentlyPlaying(accessToken: string): Promise<SpotifyT
 }
 
 /**
- * Obtém as top tracks do usuário para um período específico
+ * Get the user's top tracks for a specific time range
  */
 export async function getTopTracks(accessToken: string, timeRange: TimeRange = 'medium_term'): Promise<SpotifyTrack[]> {
     try {
-        const response = await fetch(
-            `https://api.spotify.com/v1/me/top/tracks?time_range=${timeRange}&limit=50`,
-            {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                },
-            }
-        );
+        const url = `https://api.spotify.com/v1/me/top/tracks?time_range=${timeRange}&limit=50`;
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${accessToken}` },
+        });
 
         if (!response.ok) {
             const errorText = await response.text();
@@ -139,7 +141,7 @@ export async function getTopTracks(accessToken: string, timeRange: TimeRange = '
 
         const data = await response.json();
 
-        // Formatar cada faixa retornada
+        // Format each track in the response
         return data.items.map((track: any) => ({
             id: track.id,
             title: track.name,
@@ -158,14 +160,12 @@ export async function getTopTracks(accessToken: string, timeRange: TimeRange = '
 }
 
 /**
- * Obtém o perfil do usuário do Spotify
+ * Get the user's Spotify profile
  */
 export async function getUserProfile(accessToken: string): Promise<any> {
     try {
         const response = await fetch('https://api.spotify.com/v1/me', {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-            },
+            headers: { 'Authorization': `Bearer ${accessToken}` },
         });
 
         if (!response.ok) {

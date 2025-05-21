@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/ban-ts-comment*/
+// @ts-nocheck
 import { sendFrameNotification } from "../notifs";
 import { sendNeynarFrameNotification } from "../neynar";
 import { getUserNotificationDetails } from "../kv";

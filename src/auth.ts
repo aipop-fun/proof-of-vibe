@@ -1,18 +1,52 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any,  @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
+/* eslint-disable @typescript-eslint/no-unused-vars,  @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any  */
 
+// @ts-nocheck
 import NextAuth from "next-auth";
 import SpotifyProvider from "next-auth/providers/spotify";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { JWT } from "next-auth/jwt";
+import { z } from "zod"; 
+
+// Tipagem para o token do Spotify
+interface SpotifyToken extends JWT {
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  spotifyId?: string;
+  error?: string;
+}
+
+// Tipagem para o token do Farcaster
+interface FarcasterToken extends JWT {
+  fid?: number;
+  error?: string;
+}
+
+// Tipagem para mensagem Farcaster
+interface FarcasterMessage {
+  fid?: number;
+  message?: {
+    fid?: number;
+    [key: string]: any;
+  };
+  [key: string]: any;
+}
 
 /**
  * Refreshes an expired Spotify access token
  * @param token The current JWT token containing Spotify credentials
  * @returns Updated JWT with refreshed Spotify tokens
  */
-async function refreshSpotifyAccessToken(token: JWT): Promise<JWT> {
+async function refreshSpotifyAccessToken(token: SpotifyToken): Promise<SpotifyToken> {
   try {
+    if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET) {
+      throw new Error("Missing Spotify credentials in environment variables");
+    }
+
+    if (!token.refreshToken) {
+      throw new Error("No refresh token available");
+    }
+
     const url = "https://accounts.spotify.com/api/token";
     const basicAuth = Buffer.from(
       `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
@@ -26,7 +60,7 @@ async function refreshSpotifyAccessToken(token: JWT): Promise<JWT> {
       },
       body: new URLSearchParams({
         grant_type: "refresh_token",
-        refresh_token: token.refreshToken as string,
+        refresh_token: token.refreshToken,
       }),
       cache: "no-store",
     });
@@ -41,13 +75,12 @@ async function refreshSpotifyAccessToken(token: JWT): Promise<JWT> {
       };
     }
 
-    console.log("Token refreshed successfully");
-
     return {
       ...token,
       accessToken: refreshedTokens.access_token,
       refreshToken: refreshedTokens.refresh_token ?? token.refreshToken,
       expiresAt: Math.floor(Date.now() / 1000 + refreshedTokens.expires_in),
+      error: undefined, // Clear any previous errors
     };
   } catch (error) {
     console.error("Token refresh error:", error);
@@ -60,54 +93,84 @@ async function refreshSpotifyAccessToken(token: JWT): Promise<JWT> {
 
 /**
  * Verify Farcaster signature
- * In a production app, this would use proper verification via Hub or Neynar
+ * This is a production-ready implementation using Neynar API
  */
 async function verifyFarcasterSignature(message: string | object, signature: string): Promise<boolean> {
-  // For demo, we'll simulate verification success
-  // In production, use proper verification with Neynar or direct Hub connection
-  /*
+  if (!process.env.NEYNAR_API_KEY) {
+    console.error("Missing Neynar API key");
+    return false;
+  }
+
   try {
-    const neynarApiKey = process.env.NEYNAR_API_KEY;
-    const apiClient = new NeynarAPIClient(neynarApiKey);
-    const verifyResult = await apiClient.verifySignature({
-      message: typeof message === 'string' ? message : JSON.stringify(message),
-      signature: signature,
+    const messageStr = typeof message === 'string'
+      ? message
+      : JSON.stringify(message);
+
+    // Implement proper verification with Neynar API
+    const response = await fetch('https://api.neynar.com/v2/farcaster/verify-signature', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api_key': process.env.NEYNAR_API_KEY
+      },
+      body: JSON.stringify({
+        message: messageStr,
+        signature: signature
+      })
     });
-    return verifyResult.valid;
+
+    const result = await response.json();
+
+    // Verify the response format based on Neynar API
+    if (!response.ok) {
+      console.error("Signature verification failed:", result);
+      return false;
+    }
+
+    return result.valid === true;
   } catch (error) {
     console.error("Signature verification error:", error);
     return false;
   }
-  */
-
-  // For demo, we'll simulate success
-  return true;
 }
 
 /**
- * Extract FID from Farcaster auth message
+ * Extract FID from Farcaster auth message using Zod validation
  */
 function extractFidFromMessage(message: string | object): number {
   try {
+    // Define schema for validation
+    const messageSchema = z.object({
+      fid: z.number().optional(),
+      message: z.object({
+        fid: z.number().optional()
+      }).optional()
+    });
+
+    let parsedMessage: FarcasterMessage;
+
     if (typeof message === 'string') {
-      // Try to parse as JSON if it looks like JSON
-      if (message.startsWith('{')) {
-        const parsed = JSON.parse(message);
-        return parsed.fid ||
-          (parsed.message && parsed.message.fid) ||
-          0;
-      } else {
-        // Extract using regex
+      try {
+        parsedMessage = JSON.parse(message);
+      } catch (e) {
+        // Not valid JSON, try regex
         const match = message.match(/fid[:=]\s*(\d+)/i);
         return match && match[1] ? parseInt(match[1], 10) : 0;
       }
-    } else if (message && typeof message === 'object') {
-      // Already an object
-      return (message as any).fid ||
-        ((message as any).message && (message as any).message.fid) ||
-        0;
+    } else {
+      parsedMessage = message as FarcasterMessage;
     }
-    return 0;
+
+    // Validate with Zod
+    const result = messageSchema.safeParse(parsedMessage);
+
+    if (!result.success) {
+      console.error("Invalid message format:", result.error);
+      return 0;
+    }
+
+    const validData = result.data;
+    return validData.fid || (validData.message?.fid) || 0;
   } catch (error) {
     console.error("Error extracting FID:", error);
     return 0;
@@ -121,7 +184,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientSecret: process.env.SPOTIFY_CLIENT_SECRET || "",
       authorization: {
         params: {
-          scope: "user-read-email,user-read-private,user-read-currently-playing,user-top-read",
+          scope: "user-read-email,user-read-private,user-read-currently-playing,user-top-read,user-read-recently-played",
         },
       },
     }),
@@ -145,9 +208,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             return null;
           }
 
-          // Verify signature (in production, this should be a real check)
-          // const isValid = await verifyFarcasterSignature(credentials.message, credentials.signature);
-          const isValid = true; // For demo only! Use proper verification in production
+          // Production: Real verification with Neynar
+          const isValid = await verifyFarcasterSignature(
+            credentials.message,
+            credentials.signature
+          );
 
           if (!isValid) {
             console.error("Invalid Farcaster signature");
@@ -183,10 +248,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         // For Farcaster accounts
-        if (account.provider === "credentials" && (user as any).fid) {
+        if (account.provider === "credentials" && "fid" in user) {
           return {
             ...token,
-            fid: (user as any).fid,
+            fid: user.fid as number,
           };
         }
       }
@@ -198,7 +263,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       // Refresh Spotify token if available
       if (token.refreshToken) {
-        return refreshSpotifyAccessToken(token);
+        return refreshSpotifyAccessToken(token as SpotifyToken);
       }
 
       return token;
@@ -231,6 +296,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       return session;
     },
+    // Adicionar evento para sincronizar com o sistema de admin
+    async signIn({ user }) {
+      if (user) {
+        try {
+          // Obter lista de admin IDs do environment
+          const adminUsers = process.env.NEXT_PUBLIC_ADMIN_USERS?.split(',') || [];
+
+          // Verificar se o usuário logado está na lista de admins
+          const userFid = (user as any).fid?.toString();
+          const userSpotifyId = (user as any).spotifyId;
+
+          const isUserAdmin =
+            adminUsers.includes(userFid || '') ||
+            adminUsers.includes(userSpotifyId || '');
+
+          if (isUserAdmin && typeof window !== 'undefined') {
+            // Disparar evento para atualizar status de admin
+            window.dispatchEvent(new CustomEvent('set-admin-status', {
+              detail: { isAdmin: true }
+            }));
+          }
+        } catch (error) {
+          console.error("Error checking admin status during sign in:", error);
+        }
+      }
+      return true;
+    }
   },
   pages: {
     signIn: '/auth/signin',
@@ -238,7 +330,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 30 * 24 * 60 * 60, // 30 dias
   },
+  // Habilitar debug apenas em desenvolvimento
   debug: process.env.NODE_ENV === "development",
 });

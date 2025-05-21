@@ -1,13 +1,13 @@
 /* eslint-disable  @typescript-eslint/no-unused-vars */
-
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { useAuthStore, type TimeRange } from '~/lib/stores/authStore';
+import { useAuthStore } from '~/lib/stores/authStore';
 import { SpotifyImage } from './SpotifyImage';
 import { useFrame } from './providers/FrameProvider';
 import sdk from "@farcaster/frame-sdk";
 import { TrackListSkeleton } from './SkeletonLoader';
+import { TimeRange } from '~/stores/spotifyDataStore';
 
 export function SpotifyTopTracks() {
     const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('medium_term');
@@ -40,9 +40,13 @@ export function SpotifyTopTracks() {
             // Check if token is valid and refresh if needed
             const tokenValid = await refreshTokenIfNeeded();
 
+            // Only fetch if: token is valid AND we have an access token AND 
+            // either no tracks exist AND we're not currently loading
             if (tokenValid && accessToken &&
-                (topTracks[timeRange].length === 0 ||
-                    !isLoadingTracks[timeRange])) {
+                topTracks[timeRange].length === 0 &&
+                !isLoadingTracks[timeRange]) {
+
+                console.log(`Loading top tracks for ${timeRange}...`);
                 await fetchTopTracks(timeRange);
             }
         } catch (err) {
@@ -51,21 +55,20 @@ export function SpotifyTopTracks() {
         }
     }, [accessToken, fetchTopTracks, isLoadingTracks, refreshTokenIfNeeded, topTracks]);
 
-    // Initial data load
+        
     useEffect(() => {
         if (isAuthenticated && spotifyId) {
             loadTopTracksData(selectedTimeRange);
         }
     }, [isAuthenticated, loadTopTracksData, selectedTimeRange, spotifyId]);
 
-    // Handler for changing the time period
+    
     const handleTimeRangeChange = (timeRange: TimeRange) => {
         setSelectedTimeRange(timeRange);
 
-        // Load data for the new time range if needed
         if (isAuthenticated &&
-            (topTracks[timeRange].length === 0 &&
-                !isLoadingTracks[timeRange])) {
+            topTracks[timeRange].length === 0 &&
+            !isLoadingTracks[timeRange]) {
             loadTopTracksData(timeRange);
         }
     };

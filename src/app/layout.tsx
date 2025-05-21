@@ -1,9 +1,10 @@
-// src/app/layout.tsx (updated with improved meta tags)
 import type { Metadata } from "next";
 import { auth } from "~/auth";
 import "~/app/globals.css";
 import { Providers } from "~/app/providers";
 import Script from "next/script";
+
+import AdminWrapper from "~/components/admin/AdminWrapper";
 
 export const metadata: Metadata = {
   title: process.env.NEXT_PUBLIC_FRAME_NAME || "Timbra",
@@ -56,8 +57,13 @@ export default async function RootLayout({
           crossOrigin="anonymous"
         />
       </head>
-      <body>
-        <Providers session={session}>{children}</Providers>
+      <body className="min-h-screen bg-black text-white">
+        <Providers session={session}>
+          {children}
+
+          {/* Admin UI Components carregados de forma dinâmica */}
+          <AdminWrapper />
+        </Providers>
       </body>
     </html>
   );

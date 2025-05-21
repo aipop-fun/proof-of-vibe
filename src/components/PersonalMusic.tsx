@@ -1,18 +1,21 @@
-// src/components/PersonalMusic.tsx
+/* eslint-disable  @typescript-eslint/no-explicit-any, @typescript-eslint/ban-ts-comment, react/no-unescaped-entities */
+// @ts-nocheck
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuthStore } from "~/lib/stores/authStore";
 import { SpotifyTopTracks } from "./SpotifyTopTracks";
 import { SpotifyImage } from "./SpotifyImage";
 import { Button } from "./ui/Button";
 import { useFrame } from "./providers/FrameProvider";
 import sdk from "@farcaster/frame-sdk";
+import { formatDuration } from "~/lib/utils";
 
-export function PersonalMusic() {
+const POLLING_INTERVAL = 30000; // 30 seconds
+
+export function PersonalMusic({ userId, fid }: { userId?: string; fid?: number }) {
     const [error, setError] = useState<string | null>(null);
     const { isMiniApp } = useFrame();
-    const pollingInterval = 30000; // 30 seconds
 
     // Access the auth store
     const {
@@ -23,16 +26,28 @@ export function PersonalMusic() {
         spotifyId,
         isExpired,
         accessToken,
-        refreshTokenIfNeeded
+        refreshTokenIfNeeded,
+        fetchUserCurrentTrack
     } = useAuthStore();
 
-    // Fetch data when component mounts and set up polling
+    // Determine if we're showing personal data or another user's data
+    const isPersonal = !userId && !fid;
+    const trackData = isPersonal ? currentlyPlaying : null; // We'll fetch other user's track data separately
+
+    // Fetch other user's data if userId or fid is provided
     useEffect(() => {
+        if (!isPersonal && (userId || fid) && fetchUserCurrentTrack) {
+            fetchUserCurrentTrack(userId || fid);
+        }
+    }, [userId, fid, isPersonal, fetchUserCurrentTrack]);
+
+    // Fetch and poll personal data
+    useEffect(() => {
+        if (!isPersonal) return; // Skip if not showing personal data
+
         const fetchData = async () => {
             try {
-                // Check if token is valid and refresh if needed
                 const tokenValid = await refreshTokenIfNeeded();
-
                 if (tokenValid && accessToken) {
                     await fetchCurrentlyPlaying();
                 }
@@ -52,64 +67,45 @@ export function PersonalMusic() {
             if (isAuthenticated && spotifyId && !isExpired()) {
                 fetchData();
             }
-        }, pollingInterval);
+        }, POLLING_INTERVAL);
 
         // Clean up on unmount
         return () => clearInterval(intervalId);
-    }, [isAuthenticated, spotifyId, accessToken, isExpired, fetchCurrentlyPlaying, refreshTokenIfNeeded]);
+    }, [
+        isPersonal,
+        isAuthenticated,
+        spotifyId,
+        accessToken,
+        isExpired,
+        fetchCurrentlyPlaying,
+        refreshTokenIfNeeded
+    ]);
 
-    // Calculate progress percentage for progress bar
-    const calculateProgress = (current?: string, total?: string): number => {
-        try {
-            if (!current || !total) return 0;
-
-            // Convert mm:ss format to seconds
-            const currentParts = current.split(':');
-            const totalParts = total.split(':');
-
-            const currentSeconds = parseInt(currentParts[0]) * 60 + parseInt(currentParts[1]);
-            const totalSeconds = parseInt(totalParts[0]) * 60 + parseInt(totalParts[1]);
-
-            if (isNaN(currentSeconds) || isNaN(totalSeconds) || totalSeconds === 0) {
-                return 0;
-            }
-
-            return (currentSeconds / totalSeconds) * 100;
-        } catch (error) {
-            console.error('Error calculating progress:', error);
-            return 0;
-        }
-    };
-
-    // Alternative progress calculation using raw milliseconds when available
-    const calculateProgressFromMs = (current?: number, total?: number): number => {
+    // Calculate progress percentage
+    const calculateProgress = useCallback((current?: number, total?: number): number => {
         if (!current || !total || total === 0) return 0;
         return (current / total) * 100;
-    };
+    }, []);
 
     // Handle sharing currently playing track
-    const handleShareCurrentlyPlaying = () => {
-        if (!currentlyPlaying) return;
+    const handleShareCurrentlyPlaying = useCallback(() => {
+        if (!trackData) return;
 
         // Create the share URL
         const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
         const shareUrl = `${baseUrl}/results?type=currently-playing`;
+        const shareText = `🎵 I'm currently listening to ${trackData.title} by ${trackData.artist} on Timbra!`;
 
-        // Determine the appropriate sharing method based on context
+        // Share based on context
         if (isMiniApp && typeof sdk?.actions?.composeCast === 'function') {
-            // When in Farcaster mini app, use composeCast
-            sdk.actions.composeCast({
-                text: `🎵 I'm currently listening to ${currentlyPlaying.title} by ${currentlyPlaying.artist} on Timbra!`,
-                embeds: [shareUrl]
-            });
+            sdk.actions.composeCast({ text: shareText, embeds: [shareUrl] });
         } else {
-            // On web, open in a new tab
-            window.open(shareUrl, '_blank');
+            window.open(`https://warpcast.com/~/compose?text=${encodeURIComponent(shareText)}&embeds=${encodeURIComponent(shareUrl)}`, '_blank');
         }
-    };
+    }, [trackData, isMiniApp]);
 
     // Handle viewing results page
-    const handleViewResults = () => {
+    const handleViewResults = useCallback(() => {
         const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
         const resultsUrl = `${baseUrl}/results?type=top-tracks&timeRange=medium_term`;
 
@@ -118,23 +114,27 @@ export function PersonalMusic() {
         } else {
             window.open(resultsUrl, '_blank');
         }
-    };
+    }, [isMiniApp]);
 
-    // If not authenticated with Spotify, don't show anything
-    if (!isAuthenticated || !spotifyId) {
+    // Check if we should render this component
+    if (isPersonal && (!isAuthenticated || !spotifyId)) {
         return null;
     }
 
     return (
         <div className="p-4 bg-purple-800/20 rounded-lg mb-6">
             <div className="flex justify-between items-center mb-3">
-                <h2 className="text-lg font-semibold">Your Music</h2>
-                <Button
-                    onClick={handleViewResults}
-                    className="text-xs px-3 py-1 bg-purple-600 hover:bg-purple-700"
-                >
-                    View Results
-                </Button>
+                <h2 className="text-lg font-semibold">
+                    {isPersonal ? "Your Music" : "User's Music"}
+                </h2>
+                {isPersonal && (
+                    <Button
+                        onClick={handleViewResults}
+                        className="text-xs px-3 py-1 bg-purple-600 hover:bg-purple-700"
+                    >
+                        View Results
+                    </Button>
+                )}
             </div>
 
             {/* Error display */}
@@ -144,29 +144,33 @@ export function PersonalMusic() {
                 </div>
             )}
 
-            {loadingCurrentTrack && !currentlyPlaying ? (
+            {loadingCurrentTrack && !trackData ? (
                 <div className="animate-pulse">
                     <div className="h-16 bg-purple-700/30 rounded"></div>
                 </div>
             ) : (
                 <>
                     {/* Currently playing track */}
-                    {currentlyPlaying ? (
+                    {trackData ? (
                         <div className="mb-4">
                             <div className="flex justify-between items-start">
-                                <p className="text-sm text-green-400 mb-1">Currently Playing</p>
-                                <button
-                                    onClick={handleShareCurrentlyPlaying}
-                                    className="text-xs text-purple-400 hover:text-purple-300"
-                                >
-                                    Share
-                                </button>
+                                <p className="text-sm text-green-400 mb-1">
+                                    {trackData.isPlaying ? "Currently Playing" : "Last Played"}
+                                </p>
+                                {isPersonal && (
+                                    <button
+                                        onClick={handleShareCurrentlyPlaying}
+                                        className="text-xs text-purple-400 hover:text-purple-300"
+                                    >
+                                        Share
+                                    </button>
+                                )}
                             </div>
                             <div className="flex items-center">
                                 <div className="relative w-16 h-16 mr-3 flex-shrink-0">
                                     <SpotifyImage
-                                        src={currentlyPlaying.coverArt || '/api/placeholder/60/60'}
-                                        alt={currentlyPlaying.title}
+                                        src={trackData.coverArt || '/api/placeholder/60/60'}
+                                        alt={trackData.title}
                                         className="rounded"
                                         fill
                                         sizes="64px"
@@ -174,35 +178,54 @@ export function PersonalMusic() {
                                     />
                                 </div>
                                 <div className="flex-grow min-w-0">
-                                    <p className="font-medium truncate">{currentlyPlaying.title}</p>
-                                    <p className="text-sm text-gray-300 truncate">{currentlyPlaying.artist}</p>
-                                    <div className="flex items-center mt-1">
-                                        <div className="w-full max-w-32 h-1 bg-gray-700 rounded-full mr-2">
-                                            <div
-                                                className="h-1 bg-green-500 rounded-full"
-                                                style={{
-                                                    width: `${currentlyPlaying.progressMs && currentlyPlaying.durationMs
-                                                            ? calculateProgressFromMs(currentlyPlaying.progressMs, currentlyPlaying.durationMs)
-                                                            : calculateProgress(currentlyPlaying.currentTime, currentlyPlaying.duration)
-                                                        }%`
-                                                }}
-                                            ></div>
+                                    <p className="font-medium truncate">{trackData.title}</p>
+                                    <p className="text-sm text-gray-300 truncate">{trackData.artist}</p>
+                                    {(trackData.currentTime || trackData.progressMs) && (
+                                        <div className="flex items-center mt-1">
+                                            <div className="w-full max-w-32 h-1 bg-gray-700 rounded-full mr-2">
+                                                <div
+                                                    className="h-1 bg-green-500 rounded-full"
+                                                    style={{
+                                                        width: `${calculateProgress(
+                                                            trackData.progressMs || parseTimeToMs(trackData.currentTime),
+                                                            trackData.durationMs || parseTimeToMs(trackData.duration)
+                                                        )}%`
+                                                    }}
+                                                ></div>
+                                            </div>
+                                            <span className="text-xs text-gray-400">
+                                                {trackData.currentTime || formatDuration(trackData.progressMs || 0)} / {trackData.duration || formatDuration(trackData.durationMs || 0)}
+                                            </span>
                                         </div>
-                                        <span className="text-xs text-gray-400">
-                                            {currentlyPlaying.currentTime} / {currentlyPlaying.duration}
-                                        </span>
-                                    </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
                     ) : (
-                        <p className="text-sm text-gray-400 mb-3">Not playing anything at the moment</p>
+                        <p className="text-sm text-gray-400 mb-3">
+                            {isPersonal ? "Not playing anything at the moment" : "No music data available"}
+                        </p>
                     )}
 
-                    {/* Top tracks component */}
-                    <SpotifyTopTracks />
+                    {/* Top tracks component - only show for personal view */}
+                    {isPersonal && <SpotifyTopTracks />}
                 </>
             )}
         </div>
     );
+}
+
+// Helper function to parse time format "m:ss" to milliseconds
+function parseTimeToMs(timeString?: string): number {
+    if (!timeString) return 0;
+
+    const parts = timeString.split(':');
+    if (parts.length !== 2) return 0;
+
+    const minutes = parseInt(parts[0], 10);
+    const seconds = parseInt(parts[1], 10);
+
+    if (isNaN(minutes) || isNaN(seconds)) return 0;
+
+    return (minutes * 60 + seconds) * 1000;
 }

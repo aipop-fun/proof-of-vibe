@@ -34,3 +34,270 @@ body {
     --radius: 0.5rem;
   }
 }
+
+/* Enhanced Farcaster Login Styles */
+
+/* Global animations */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes gradient-shift {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+/* Enhanced button styling with 3D effects */
+.farcaster-button {
+  background: linear-gradient(135deg, #7c3aed 0%, #6366f1 50%, #8b5cf6 100%);
+  background-size: 200% 200%;
+  animation: gradient-shift 4s ease infinite;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 
+    0 10px 25px rgba(124, 58, 237, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.farcaster-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  transition: left 0.7s ease;
+}
+
+.farcaster-button:hover::before {
+  left: 100%;
+}
+
+.farcaster-button:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 
+    0 15px 35px rgba(124, 58, 237, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+}
+
+.farcaster-button:active {
+  transform: translateY(-1px) scale(1.01);
+  transition-duration: 0.1s;
+}
+
+/* Glassmorphism effects */
+.glass-effect {
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+}
+
+/* QR Code container with enhanced styling */
+.qr-container {
+  background: linear-gradient(145deg, #ffffff, #f8fafc);
+  border: 3px solid rgba(124, 58, 237, 0.1);
+  box-shadow: 
+    0 20px 40px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+  position: relative;
+  overflow: hidden;
+}
+
+.qr-container::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: conic-gradient(
+    from 0deg,
+    transparent,
+    rgba(124, 58, 237, 0.03),
+    transparent,
+    rgba(99, 102, 241, 0.03),
+    transparent
+  );
+  animation: spin 10s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Enhanced status indicators */
+.status-indicator {
+  background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+  border: 1px solid rgba(156, 163, 175, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+/* Success state styling */
+.success-container {
+  background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+  border: 2px solid rgba(34, 197, 94, 0.3);
+  box-shadow: 
+    0 20px 40px rgba(34, 197, 94, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+  animation: float 3s ease-in-out infinite;
+}
+
+.success-icon {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  box-shadow: 0 8px 16px rgba(34, 197, 94, 0.3);
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+/* Error state styling */
+.error-container {
+  background: linear-gradient(135deg, #fef2f2, #fee2e2);
+  border: 2px solid rgba(239, 68, 68, 0.3);
+  box-shadow: 0 10px 25px rgba(239, 68, 68, 0.2);
+}
+
+.error-icon {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
+}
+
+/* Loading shimmer effect */
+.loading-shimmer {
+  background: linear-gradient(
+    90deg,
+    #f1f5f9 0%,
+    #e2e8f0 50%,
+    #f1f5f9 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite linear;
+}
+
+/* Step indicator styling */
+.step-indicator {
+  background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  transition: all 0.3s ease;
+}
+
+.step-indicator:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(124, 58, 237, 0.1);
+  background: linear-gradient(135deg, #faf5ff, #f3e8ff);
+  border-color: rgba(124, 58, 237, 0.3);
+}
+
+.step-number {
+  background: linear-gradient(135deg, #7c3aed, #6366f1);
+  box-shadow: 0 4px 8px rgba(124, 58, 237, 0.3);
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .qr-container {
+    width: 240px;
+    height: 240px;
+  }
+  
+  .farcaster-button {
+    padding: 14px 24px;
+    font-size: 15px;
+  }
+  
+  .success-container,
+  .error-container {
+    margin: 0 16px;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .glass-effect {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  .qr-container {
+    background: linear-gradient(145deg, #1f2937, #111827);
+    border-color: rgba(124, 58, 237, 0.2);
+  }
+  
+  .status-indicator {
+    background: linear-gradient(135deg, #374151, #1f2937);
+    border-color: rgba(156, 163, 175, 0.1);
+  }
+  
+  .step-indicator {
+    background: linear-gradient(135deg, #374151, #1f2937);
+    border-color: rgba(148, 163, 184, 0.1);
+  }
+  
+  .step-indicator:hover {
+    background: linear-gradient(135deg, #4c1d95, #3730a3);
+  }
+}
+
+/* Accessibility improvements */
+.farcaster-button:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
+}
+
+.farcaster-button:disabled {
+  background: linear-gradient(135deg, #9ca3af, #6b7280);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .farcaster-button,
+  .qr-container::before,
+  .success-container,
+  .success-icon,
+  .loading-shimmer {
+    animation: none;
+  }
+  
+  .farcaster-button:hover {
+    transform: none;
+  }
+}

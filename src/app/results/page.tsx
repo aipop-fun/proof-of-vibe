@@ -2,30 +2,45 @@
 // @ts-nocheck
 "use client";
 
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useEffect, useState, useCallback } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from '~/components/ui/Button';
 import { ShareCard } from '~/components/ShareCard';
 import { useFrame } from '~/components/providers/FrameProvider';
 import { useAuthStore } from '~/lib/stores/authStore';
+import { SpotifyImage } from '~/components/SpotifyImage';
 import Head from 'next/head';
 import sdk from "@farcaster/frame-sdk";
+import { TimeRange } from '~/stores/spotifyDataStore';
 
 type ResultsType = 'top-tracks' | 'currently-playing' | 'vibe-match';
 
 export default function ResultsPage() {
+    const router = useRouter();
     const searchParams = useSearchParams();
     const { isMiniApp, context, added, addFrame } = useFrame();
     const [baseUrl, setBaseUrl] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    // Get auth and music state
+    // Get auth and music state from the store
     const {
         spotifyUser,
         topTracks,
+        isLoadingTracks,
         currentlyPlaying,
+        loadingCurrentTrack,
         isAuthenticated,
-        isLinked
+        isLinked,
+        accessToken,
+        refreshTokenIfNeeded,
+        fetchTopTracks,
+        fetchCurrentlyPlaying
     } = useAuthStore();
+
+    // Determine which type of results to show
+    const type = searchParams?.get('type') as ResultsType || 'top-tracks';
+    const timeRange = searchParams?.get('timeRange') as TimeRange || 'medium_term';
 
     // Set base URL for constructing the frame embed
     useEffect(() => {
@@ -50,9 +65,60 @@ export default function ResultsPage() {
         init();
     }, [isMiniApp]);
 
-    // Determine which type of results to show
-    const type = searchParams?.get('type') as ResultsType || 'top-tracks';
-    const timeRange = searchParams?.get('timeRange') || 'medium_term';
+    // Load the appropriate data based on the requested view type
+    useEffect(() => {
+        const loadData = async () => {
+            setIsLoading(true);
+            setError(null);
+
+            try {
+                // Check if token is valid and refresh if needed
+                const tokenValid = await refreshTokenIfNeeded();
+
+                if (!tokenValid || !accessToken) {
+                    console.warn('No valid access token available');
+                    setIsLoading(false);
+                    return;
+                }
+
+                // Load data based on the view type
+                if (type === 'currently-playing') {
+                    // Only fetch if not already loading
+                    if (!loadingCurrentTrack && (!currentlyPlaying || currentlyPlaying.length === 0)) {
+                        await fetchCurrentlyPlaying();
+                    }
+                } else if (type === 'top-tracks') {
+                    // Only fetch if no data and not already loading
+                    if (!isLoadingTracks[timeRange] && (!topTracks[timeRange] || topTracks[timeRange].length === 0)) {
+                        await fetchTopTracks(timeRange);
+                    }
+                }
+            } catch (err) {
+                console.error(`Error loading data for ${type}:`, err);
+                setError(err instanceof Error ? err.message : "Failed to load data");
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        if (isAuthenticated) {
+            loadData();
+        } else {
+            setIsLoading(false);
+        }
+    }, [
+        type,
+        timeRange,
+        isAuthenticated,
+        accessToken,
+        refreshTokenIfNeeded,
+        fetchCurrentlyPlaying,
+        fetchTopTracks,
+        currentlyPlaying,
+        topTracks,
+        loadingCurrentTrack,
+        isLoadingTracks
+    ]);
 
     // Get user info for display
     const userName = spotifyUser?.name || 'music lover';
@@ -114,6 +180,40 @@ export default function ResultsPage() {
         }
     };
 
+    // Handle refreshing the data
+    const handleRefresh = useCallback(async () => {
+        setIsLoading(true);
+        setError(null);
+
+        try {
+            // Refresh token if needed
+            const tokenValid = await refreshTokenIfNeeded();
+
+            if (!tokenValid || !accessToken) {
+                throw new Error('No valid access token available');
+            }
+
+            // Refresh data based on view type
+            if (type === 'currently-playing') {
+                await fetchCurrentlyPlaying();
+            } else if (type === 'top-tracks') {
+                await fetchTopTracks(timeRange);
+            }
+        } catch (err) {
+            console.error(`Error refreshing data:`, err);
+            setError(err instanceof Error ? err.message : "Failed to refresh data");
+        } finally {
+            setIsLoading(false);
+        }
+    }, [type, timeRange, refreshTokenIfNeeded, fetchCurrentlyPlaying, fetchTopTracks, accessToken]);
+
+    // Friendly labels for time periods
+    const timeRangeLabels: Record<TimeRange, string> = {
+        short_term: 'Last Month',
+        medium_term: 'Last 6 Months',
+        long_term: 'All Time'
+    };
+
     return (
         <>
             <Head>
@@ -159,17 +259,37 @@ export default function ResultsPage() {
                         )}
                     </div>
 
+                    {/* Error display */}
+                    {error && (
+                        <div className="mb-3 p-2 text-sm bg-red-900/30 text-red-200 rounded-md">
+                            {error}
+                            <Button
+                                onClick={handleRefresh}
+                                className="ml-2 text-xs px-2 py-0.5 bg-red-600 hover:bg-red-700"
+                            >
+                                Retry
+                            </Button>
+                        </div>
+                    )}
+
                     {/* Results content - customize based on the type */}
                     <div className="bg-purple-800/30 rounded-lg p-6 mb-6">
-                        {type === 'currently-playing' && currentlyPlaying ? (
+                        {isLoading || isLoadingTracks[timeRange] || loadingCurrentTrack ? (
+                            <div className="flex flex-col items-center py-8">
+                                <div className="w-8 h-8 border-t-2 border-b-2 border-purple-500 rounded-full animate-spin mb-4"></div>
+                                <p className="text-purple-300">Loading your {type === 'top-tracks' ? 'top tracks' : 'music data'}...</p>
+                            </div>
+                        ) : type === 'currently-playing' && currentlyPlaying ? (
                             <div className="flex flex-col items-center">
                                 <h2 className="text-xl font-semibold mb-4">Now Playing</h2>
 
                                 <div className="relative w-40 h-40 mb-4">
-                                    <img
+                                    <SpotifyImage
                                         src={currentlyPlaying.coverArt || '/api/placeholder/160/160'}
                                         alt={`${currentlyPlaying.title} by ${currentlyPlaying.artist}`}
-                                        className="w-full h-full object-cover rounded-lg"
+                                        width={160}
+                                        height={160}
+                                        className="rounded-lg"
                                     />
                                 </div>
 
@@ -178,15 +298,47 @@ export default function ResultsPage() {
                                 {currentlyPlaying.album && (
                                     <p className="text-sm text-gray-400">{currentlyPlaying.album}</p>
                                 )}
+
+                                {/* Progress bar for currently playing track */}
+                                {currentlyPlaying.progressMs && currentlyPlaying.durationMs && (
+                                    <div className="w-full mt-4">
+                                        <div className="w-full bg-gray-700 rounded-full h-1.5">
+                                            <div
+                                                className="bg-green-500 h-1.5 rounded-full"
+                                                style={{ width: `${(currentlyPlaying.progressMs / currentlyPlaying.durationMs) * 100}%` }}
+                                            ></div>
+                                        </div>
+                                        <div className="flex justify-between text-xs text-gray-400 mt-1">
+                                            <span>{formatTime(currentlyPlaying.progressMs)}</span>
+                                            <span>{formatTime(currentlyPlaying.durationMs)}</span>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         ) : type === 'top-tracks' && topTracks[timeRange]?.length > 0 ? (
                             <div>
                                 <h2 className="text-xl font-semibold mb-4 text-center">
                                     My Top Tracks
-                                    {timeRange === 'short_term' && ' (Last Month)'}
-                                    {timeRange === 'medium_term' && ' (Last 6 Months)'}
-                                    {timeRange === 'long_term' && ' (All Time)'}
+                                    <span className="block text-sm font-normal text-gray-300 mt-1">
+                                        {timeRangeLabels[timeRange]}
+                                    </span>
                                 </h2>
+
+                                {/* Time range tabs */}
+                                <div className="flex space-x-2 mb-4 text-xs justify-center">
+                                    {Object.entries(timeRangeLabels).map(([range, label]) => (
+                                        <a
+                                            key={range}
+                                            href={`/results?type=top-tracks&timeRange=${range}`}
+                                            className={`px-2 py-1 rounded ${timeRange === range
+                                                ? 'bg-purple-700 text-white'
+                                                : 'bg-purple-900/50 text-gray-300 hover:bg-purple-800/50'
+                                                }`}
+                                        >
+                                            {label}
+                                        </a>
+                                    ))}
+                                </div>
 
                                 <div className="space-y-3 max-h-80 overflow-y-auto">
                                     {topTracks[timeRange].slice(0, 5).map((track, index) => (
@@ -195,16 +347,23 @@ export default function ResultsPage() {
                                                 {index + 1}
                                             </div>
                                             <div className="w-10 h-10 mx-2">
-                                                <img
+                                                <SpotifyImage
                                                     src={track.coverArt || '/api/placeholder/40/40'}
                                                     alt={track.title}
-                                                    className="w-full h-full object-cover rounded"
+                                                    width={40}
+                                                    height={40}
+                                                    className="rounded"
                                                 />
                                             </div>
                                             <div className="flex-1 overflow-hidden">
                                                 <p className="font-medium truncate">{track.title}</p>
                                                 <p className="text-xs text-gray-400 truncate">{track.artist}</p>
                                             </div>
+                                            {track.popularity !== undefined && (
+                                                <div className="text-xs text-gray-400 bg-purple-800/50 px-2 py-0.5 rounded-full">
+                                                    {track.popularity}%
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
@@ -240,6 +399,14 @@ export default function ResultsPage() {
                                         "Try listening to some music first!" :
                                         "Connect your Spotify account to see your music data"}
                                 </p>
+                                {isAuthenticated && (
+                                    <Button
+                                        onClick={handleRefresh}
+                                        className="mt-4 bg-purple-600 hover:bg-purple-700"
+                                    >
+                                        Refresh Data
+                                    </Button>
+                                )}
                             </div>
                         )}
                     </div>
@@ -290,4 +457,13 @@ export default function ResultsPage() {
             </div>
         </>
     );
+}
+
+// Helper function to format milliseconds into MM:SS
+function formatTime(ms: number): string {
+    if (!ms) return '0:00';
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }

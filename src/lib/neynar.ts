@@ -1,25 +1,125 @@
-
-/* eslint-disable @typescript-eslint/ban-ts-comment*/
+/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any*/
 // @ts-nocheck
 import { NeynarAPIClient, Configuration } from "@neynar/nodejs-sdk";
 
+// Environment variables
+const API_KEY = process.env.NEYNAR_API_KEY;
+const CLIENT_ID = process.env.NEYNAR_CLIENT_ID;
+const BASE_URL = process.env.NEYNAR_BASE_URL || "https://api.neynar.com/v2";
+
 /**
  * Creates and returns a Neynar API client instance
- * Uses environment variables for authentication
  */
 export function getNeynarClient(): NeynarAPIClient {
-  const apiKey = process.env.NEYNAR_API_KEY;
-
-  if (!apiKey) {
+  if (!API_KEY) {
     throw new Error("NEYNAR_API_KEY environment variable is not set");
   }
 
-  const config = new Configuration({
-    apiKey
-  });
-
+  const config = new Configuration({ apiKey: API_KEY });
   return new NeynarAPIClient(config);
 }
+
+/**
+ * Common error handler for Neynar API requests
+ */
+export const handleNeynarError = (error: unknown): { state: string; error: string } => {
+  // Check if this is a rate limit error
+  if (error instanceof Error && error.message.includes("rate limit")) {
+    return {
+      state: "rate_limit",
+      error: "Rate limited by Neynar API"
+    };
+  }
+
+  return {
+    state: "error",
+    error: error instanceof Error ? error.message : "Unknown error"
+  };
+};
+
+/**
+ * Make a Neynar API request with proper error handling
+ */
+export const fetchNeynarApi = async (
+  endpoint: string, 
+  options: RequestInit = {},
+  revalidate: number = 300
+): Promise<any> => {
+  try {
+    if (!API_KEY) {
+      throw new Error("NEYNAR_API_KEY environment variable is not set");
+    }
+
+    const url = `${BASE_URL}${endpoint}`;
+    
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Accept': 'application/json',
+        'X-API-KEY': API_KEY,
+        ...options.headers,
+      },
+      next: {
+        revalidate,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Neynar API error: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error(`Neynar API request failed:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Normalize user data from different Neynar API responses
+ */
+export const normalizeNeynarUser = (user: any): any => ({
+  fid: user.fid,
+  username: user.username,
+  display_name: user.display_name || user.displayName,
+  pfp_url: user.pfp_url || user.pfpUrl,
+  bio: user.profile?.bio?.text || user.bio,
+  follower_count: user.follower_count || user.followerCount,
+  following_count: user.following_count || user.followingCount,
+  verified_addresses: user.verified_addresses || user.verifiedAddresses,
+  custody_address: user.custody_address || user.custodyAddress,
+});
+
+/**
+ * Search for users by query
+ */
+export const searchUsers = async (query: string): Promise<any[]> => {
+  try {
+    // Check if query is a FID (numeric)
+    const isFid = /^\d+$/.test(query.trim());
+    
+    if (isFid) {
+      // Direct FID lookup
+      const fid = parseInt(query.trim());
+      const data = await fetchNeynarApi(`/farcaster/user/by-fid?fid=${fid}`);
+      return [normalizeNeynarUser(data.user)];
+    }
+
+    // Search for users by name/username
+    const data = await fetchNeynarApi(
+      `/farcaster/user/search?q=${encodeURIComponent(query)}&limit=20`
+    );
+    
+    // Normalize the search results
+    return (data.result?.users || []).map(normalizeNeynarUser);
+  } catch (error) {
+    console.error('Error searching users:', error);
+    if (error instanceof Error && error.message.includes('404')) {
+      return [];
+    }
+    throw error;
+  }
+};
 
 /**
  * Sends a notification through Neynar's notification system
@@ -36,40 +136,22 @@ export async function sendNeynarFrameNotification({
   try {
     const client = getNeynarClient();
 
-    // Verify that we have the required client ID
-    const clientId = process.env.NEYNAR_CLIENT_ID;
-    if (!clientId) {
+    if (!CLIENT_ID) {
       throw new Error("NEYNAR_CLIENT_ID environment variable is not set");
     }
 
     // Send notification via Neynar API
     const response = await client.publishNotification({
-      clientId,
+      clientId: CLIENT_ID,
       fid,
       title,
       body
     });
 
-    if (response && response.success) {
-      return { state: "success" };
-    } else {
-      return {
-        state: "error",
-        error: "Failed to send notification"
-      };
-    }
+    return response && response.success 
+      ? { state: "success" }
+      : { state: "error", error: "Failed to send notification" };
   } catch (error) {
-    // Check if this is a rate limit error
-    if (error instanceof Error && error.message.includes("rate limit")) {
-      return {
-        state: "rate_limit",
-        error: "Rate limited by Neynar API"
-      };
-    }
-
-    return {
-      state: "error",
-      error: error instanceof Error ? error.message : "Unknown error"
-    };
+    return handleNeynarError(error);
   }
 }

@@ -1,20 +1,24 @@
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { sdk } from '@farcaster/frame-sdk';
 
-// Mock data structure for listening activity
+// Types
+type Track = {
+  name: string;
+  artist: string;
+  album: string;
+  coverArt: string;
+};
+
 type ListeningActivity = {
   fid: number;
   username: string;
   profilePic: string;
-  track: {
-    name: string;
-    artist: string;
-    album: string;
-    coverArt: string;
-  };
+  track: Track;
   timestamp: number;
 };
 
+// Mock data
 const mockListeningData: ListeningActivity[] = [
   {
     fid: 6841,
@@ -26,7 +30,7 @@ const mockListeningData: ListeningActivity[] = [
       album: 'Piramida',
       coverArt: 'https://example.com/album-cover.jpg'
     },
-    timestamp: Date.now() - 5 * 60 * 1000 // 5 minutes ago
+    timestamp: Date.now() - 5 * 60 * 1000
   },
   {
     fid: 3621,
@@ -38,30 +42,96 @@ const mockListeningData: ListeningActivity[] = [
       album: 'Hurry Up, We\'re Dreaming',
       coverArt: 'https://example.com/midnight-city-cover.jpg'
     },
-    timestamp: Date.now() - 15 * 60 * 1000 // 15 minutes ago
+    timestamp: Date.now() - 15 * 60 * 1000
   }
 ];
 
+// Component for user profile image
+const ProfileImage = ({ src, alt }: { src: string; alt: string }) => (
+  <div className="relative w-12 h-12 mr-4">
+    <Image
+      src={src}
+      alt={alt}
+      fill
+      className="rounded-full object-cover"
+      sizes="48px"
+    />
+  </div>
+);
+
+// Component for album cover image
+const AlbumCover = ({ src, alt }: { src: string; alt: string }) => (
+  <div className="relative w-16 h-16 mr-4">
+    <Image
+      src={src}
+      alt={alt}
+      fill
+      className="rounded object-cover"
+      sizes="64px"
+    />
+  </div>
+);
+
+// Component for a single activity item
+const ActivityItem = ({
+  activity,
+  onViewProfile,
+  onShare
+}: {
+  activity: ListeningActivity;
+  onViewProfile: (fid: number) => void;
+  onShare: (activity: ListeningActivity) => void;
+}) => (
+  <div className="flex items-center bg-gray-100 p-3 rounded-lg shadow-sm">
+    <ProfileImage src={activity.profilePic} alt={activity.username} />
+
+    <div className="flex-grow">
+      <div className="flex items-center">
+        <span
+          className="font-semibold cursor-pointer hover:underline"
+          onClick={() => onViewProfile(activity.fid)}
+        >
+          {activity.username}
+        </span>
+        <span className="ml-2 text-gray-500 text-sm">
+          {new Date(activity.timestamp).toLocaleTimeString()}
+        </span>
+      </div>
+
+      <div className="flex items-center mt-2">
+        <AlbumCover src={activity.track.coverArt} alt={activity.track.album} />
+        <div>
+          <p className="font-medium">{activity.track.name}</p>
+          <p className="text-gray-600">{activity.track.artist}</p>
+        </div>
+      </div>
+    </div>
+
+    <button
+      onClick={() => onShare(activity)}
+      className="ml-4 bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+    >
+      Share Vibe
+    </button>
+  </div>
+);
+
 const ProofOfVibesApp: React.FC = () => {
-  const [listeningActivities, setListeningActivities] = useState<ListeningActivity[]>([]);
+  const [activities, setActivities] = useState<ListeningActivity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const initApp = async () => {
+    (async () => {
       try {
-        // Simulate fetching listening data
-        setListeningActivities(mockListeningData);
-        
-        // Hide splash screen
+        // Simulate fetching data
+        setActivities(mockListeningData);
         await sdk.actions.ready();
       } catch (error) {
         console.error('App initialization error:', error);
       } finally {
         setIsLoading(false);
       }
-    };
-
-    initApp();
+    })();
   }, []);
 
   const handleViewProfile = async (fid: number) => {
@@ -75,56 +145,20 @@ const ProofOfVibesApp: React.FC = () => {
     });
   };
 
-  if (isLoading) {
-    return <div>Loading Vibes...</div>;
-  }
+  if (isLoading) return <div>Loading Vibes...</div>;
 
   return (
     <div className="p-4 bg-white min-h-screen">
       <h1 className="text-2xl font-bold mb-4">Timbra 🎧</h1>
-      
+
       <div className="space-y-4">
-        {listeningActivities.map((activity, index) => (
-          <div 
-            key={index} 
-            className="flex items-center bg-gray-100 p-3 rounded-lg shadow-sm"
-          >
-            <img 
-              src={activity.profilePic} 
-              alt={activity.username} 
-              className="w-12 h-12 rounded-full mr-4"
-            />
-            <div className="flex-grow">
-              <div className="flex items-center">
-                <span 
-                  className="font-semibold cursor-pointer hover:underline" 
-                  onClick={() => handleViewProfile(activity.fid)}
-                >
-                  {activity.username}
-                </span>
-                <span className="ml-2 text-gray-500 text-sm">
-                  {new Date(activity.timestamp).toLocaleTimeString()}
-                </span>
-              </div>
-              <div className="flex items-center mt-2">
-                <img 
-                  src={activity.track.coverArt} 
-                  alt={activity.track.album} 
-                  className="w-16 h-16 mr-4 rounded"
-                />
-                <div>
-                  <p className="font-medium">{activity.track.name}</p>
-                  <p className="text-gray-600">{activity.track.artist}</p>
-                </div>
-              </div>
-            </div>
-            <button 
-              onClick={() => handleShareActivity(activity)}
-              className="ml-4 bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
-            >
-              Share Vibe
-            </button>
-          </div>
+        {activities.map((activity, index) => (
+          <ActivityItem
+            key={index}
+            activity={activity}
+            onViewProfile={handleViewProfile}
+            onShare={handleShareActivity}
+          />
         ))}
       </div>
     </div>
