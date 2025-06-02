@@ -1,10 +1,11 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/ban-ts-comment */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/ban-ts-comment, react-hooks/exhaustive-deps */
 //@ts-nocheck
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useProfile } from '@farcaster/auth-kit';
-import { useUserStore } from '~/lib/stores/userStore';
+import { useAuthStore } from '~/lib/stores/authStore';
+import sdk from "@farcaster/frame-sdk";
 
 // Declaring a global interface to avoid TypeScript errors
 declare global {
@@ -14,31 +15,44 @@ declare global {
 }
 
 export function useAuth() {
-    const [isMiniApp, setIsMiniApp] = useState<boolean | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     // Use the official AuthKit useProfile hook for web context
     const { isAuthenticated: isAuthKitAuthenticated, profile } = useProfile();
 
-    // Get user state and actions from our store
+    // Get unified auth state and actions from our store
     const {
+        // State
         farcaster,
         spotify,
         isAuthenticated,
+        isMiniApp,
+        authMethod,
+        isLinked,
+        fid,
+        spotifyId,
+        userId,
+        accessToken,
+
+        // Actions
         setFarcasterUser,
         setSpotifyUser,
-        linkAccounts,
-        logout,
+        setMiniAppStatus,
+        linkAccounts: linkAccountsStore,
+        clearAuth,
         getDisplayName,
-        getProfileImage
-    } = useUserStore();
+        getProfileImage,
 
-    // Check if we're in a Mini App environment
+        // Music actions
+        fetchCurrentlyPlaying,
+        currentlyPlaying
+    } = useAuthStore();
+
+    // Detect Mini App environment and initialize
     useEffect(() => {
-        async function checkEnvironment() {
+        async function initializeAuth() {
             try {
-                // We can determine if we're in a mini app by checking if we're in an iframe
-                // or by checking for certain URL parameters
+                // Check for Mini App environment
                 const inIframe = window !== window.parent;
                 const url = new URL(window.location.href);
                 const hasFrameParam = url.searchParams.has('fc-frame');
@@ -46,122 +60,173 @@ export function useAuth() {
                 const miniAppParam = url.searchParams.get('miniApp') === 'true' ||
                     url.pathname.includes('/miniapp');
 
-                // If any of these conditions are true, we're likely in a mini app
                 const isMiniAppEnv = inIframe || hasFrameParam || isWarpcast || miniAppParam;
 
-                setIsMiniApp(isMiniAppEnv);
+                // Update store with environment status
+                setMiniAppStatus(isMiniAppEnv);
 
-                // If we're in a mini app, try to access the SDK context as confirmation
-                if (isMiniAppEnv && window.FrameSDK) {
-                    try {
-                        const sdk = window.FrameSDK;
-                        if (sdk && sdk.context) {
-                            console.log("Successfully connected to Farcaster Mini App context");
-                        }
-                    } catch (error) {
-                        console.error("Error accessing Mini App context:", error);
-                        // If we can't access the context, we're probably not in a mini app
-                        setIsMiniApp(false);
-                    }
+                console.log('Environment detected:', {
+                    isMiniApp: isMiniAppEnv,
+                    inIframe,
+                    hasFrameParam,
+                    isWarpcast,
+                    miniAppParam
+                });
+
+                // Initialize based on environment
+                if (isMiniAppEnv) {
+                    await initMiniAppAuth();
+                } else {
+                    await initWebAuth();
                 }
+
             } catch (error) {
-                console.error('Error checking Mini App environment:', error);
-                setIsMiniApp(false);
+                console.error('Error initializing auth:', error);
             } finally {
                 setIsLoading(false);
             }
         }
 
-        // Check environment with a small delay to allow scripts to load
-        const timer = setTimeout(checkEnvironment, 500);
-        return () => clearTimeout(timer);
-    }, []);
+        initializeAuth();
+    }, [setMiniAppStatus, setFarcasterUser, setSpotifyUser]);
 
-    // If we're in a Mini App, get user info from the context
-    useEffect(() => {
-        if (isMiniApp === true && window.FrameSDK) {
-            const initMiniAppAuth = async () => {
-                try {
-                    // Get context from frame-sdk
-                    const sdk = window.FrameSDK;
-                    const context = await sdk.context;
+    // Initialize Mini App authentication
+    const initMiniAppAuth = async () => {
+        try {
+            // Try to access Farcaster Frame SDK
+            if (typeof window !== 'undefined' && window.parent !== window) {
+                // We're in an iframe, try to get context from parent
+                const context = await sdk.context;
 
-                    if (context?.user) {
-                        // Set Farcaster user from context
-                        setFarcasterUser({
-                            fid: context.user.fid,
-                            username: context.user.username,
-                            displayName: context.user.displayName,
-                            pfpUrl: context.user.pfpUrl,
-                        });
+                if (context?.user) {
+                    console.log('Mini App context found:', context.user);
 
-                        // If we have an FID, try to fetch linked Spotify account from our API
-                        if (context.user.fid) {
-                            try {
-                                const response = await fetch(`/api/users/${context.user.fid}`);
-                                if (response.ok) {
-                                    const userData = await response.json();
-                                    if (userData.spotify) {
-                                        setSpotifyUser(userData.spotify, userData.spotifyToken, userData.spotifyRefreshToken, userData.spotifyExpiresIn);
-                                    }
-                                }
-                            } catch (error) {
-                                console.error('Error fetching user data:', error);
-                            }
-                        }
+                    // Set Farcaster user from context
+                    setFarcasterUser({
+                        fid: context.user.fid,
+                        username: context.user.username,
+                        displayName: context.user.displayName,
+                        pfpUrl: context.user.pfpUrl,
+                    });
+
+                    // Try to fetch linked Spotify account from our API
+                    if (context.user.fid) {
+                        await fetchUserData(context.user.fid);
                     }
-                } catch (error) {
-                    console.error('Error initializing Mini App auth:', error);
+                } else {
+                    console.log('No Mini App context available');
                 }
-            };
-
-            initMiniAppAuth();
+            }
+        } catch (error) {
+            console.error('Error initializing Mini App auth:', error);
         }
-    }, [isMiniApp, setFarcasterUser, setSpotifyUser]);
+    };
 
-    // For web environment, sync AuthKit profile with our store
-    useEffect(() => {
-        if (!isMiniApp && isAuthKitAuthenticated && profile) {
-            // Set Farcaster user in our store from AuthKit profile
-            setFarcasterUser({
-                fid: profile.fid,
-                username: profile.username,
-                displayName: profile.displayName,
-                pfpUrl: profile.pfpUrl,
-            });
+    // Initialize Web authentication
+    const initWebAuth = async () => {
+        try {
+            // Check if we have persisted auth state
+            if (isAuthenticated && fid) {
+                // We have persisted auth, try to refresh user data
+                await fetchUserData(fid);
+            }
 
-            // Fetch additional data from backend (like linked Spotify account)
-            fetch(`/api/users/${profile.fid}`)
-                .then(response => {
-                    if (response.ok) return response.json();
-                    throw new Error('Failed to fetch user data');
-                })
-                .then(userData => {
-                    if (userData.spotify) {
-                        setSpotifyUser(
-                            userData.spotify,
-                            userData.spotifyToken,
-                            userData.spotifyRefreshToken,
-                            userData.spotifyExpiresIn
-                        );
-                    }
-                })
-                .catch(error => {
-                    console.error('Error fetching user data:', error);
+            // Sync with AuthKit if available
+            if (isAuthKitAuthenticated && profile) {
+                console.log('AuthKit profile found:', profile);
+
+                setFarcasterUser({
+                    fid: profile.fid,
+                    username: profile.username,
+                    displayName: profile.displayName,
+                    pfpUrl: profile.pfpUrl,
                 });
-        }
-    }, [isMiniApp, isAuthKitAuthenticated, profile, setFarcasterUser, setSpotifyUser]);
 
-    // For web environment, handle Spotify auth
+                // Fetch additional data from backend
+                await fetchUserData(profile.fid);
+            }
+        } catch (error) {
+            console.error('Error initializing web auth:', error);
+        }
+    };
+
+    // Fetch user data from API
+    const fetchUserData = async (userFid: number) => {
+        try {
+            const response = await fetch(`/api/users/${userFid}`);
+            if (response.ok) {
+                const userData = await response.json();
+
+                if (userData.spotify) {
+                    setSpotifyUser(
+                        userData.spotify,
+                        userData.spotifyToken,
+                        userData.spotifyRefreshToken,
+                        userData.spotifyExpiresIn
+                    );
+                }
+
+                // Update userId if we got it from the API
+                if (userData.id && !userId) {
+                    // We need to update the userId in the store
+                    // This could be done through a separate action
+                    console.log('User ID from API:', userData.id);
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching user data:', error);
+        }
+    };
+
+    // Navigation helper that respects the environment
+    const navigate = useCallback((url: string, external: boolean = false) => {
+        if (isMiniApp) {
+            if (external && typeof sdk?.actions?.openUrl === 'function') {
+                // External links in mini app
+                sdk.actions.openUrl(url);
+            } else {
+                // Internal navigation in mini app - use same window
+                window.location.href = url;
+            }
+        } else {
+            if (external) {
+                // External links in web - open new tab
+                window.open(url, '_blank');
+            } else {
+                // Internal navigation in web
+                window.location.href = url;
+            }
+        }
+    }, [isMiniApp]);
+
+    // Spotify login that respects environment
     const loginWithSpotify = useCallback(() => {
         if (isMiniApp) {
-            console.error('Spotify login not supported in Mini App environment');
-            return;
+            // In mini app, open Spotify auth in same window
+            const spotifyAuthUrl = `/api/auth/signin/spotify?source=miniapp&fid=${fid}`;
+            navigate(spotifyAuthUrl, false);
+        } else {
+            // In web, redirect normally
+            window.location.href = '/api/auth/signin/spotify';
         }
+    }, [isMiniApp, fid, navigate]);
 
-        // Redirect to Spotify auth endpoint
-        window.location.href = '/api/auth/signin/spotify';
-    }, [isMiniApp]);
+    // Logout that works in all environments
+    const logout = useCallback(() => {
+        clearAuth();
+        if (!isMiniApp) {
+            // Only redirect in web environment
+            window.location.href = '/';
+        }
+    }, [clearAuth, isMiniApp]);
+
+    // Auto-fetch music data if authenticated
+    useEffect(() => {
+        if (isAuthenticated && spotifyId && accessToken && !currentlyPlaying) {
+            // Initial fetch of currently playing
+            fetchCurrentlyPlaying().catch(console.error);
+        }
+    }, [isAuthenticated, spotifyId, accessToken, currentlyPlaying, fetchCurrentlyPlaying]);
 
     // Expose a consistent API regardless of environment
     return {
@@ -169,18 +234,29 @@ export function useAuth() {
         isLoading,
         isMiniApp,
         isAuthenticated: isAuthKitAuthenticated || isAuthenticated,
+        isLinked,
+        authMethod,
+
+        // User data
         user: {
             farcaster,
             spotify,
+            fid,
+            spotifyId,
+            userId,
             displayName: getDisplayName(),
             profileImage: getProfileImage(),
         },
 
         // Actions
-        loginWithSpotify: isMiniApp ? undefined : loginWithSpotify,
+        loginWithSpotify,
         logout: isMiniApp ? undefined : logout,
+        navigate,
 
-        // For linking accounts
-        linkAccounts,
+        // For linking accounts - use the store function directly
+        linkAccounts: linkAccountsStore,
+
+        // Music data
+        currentlyPlaying,
     };
 }

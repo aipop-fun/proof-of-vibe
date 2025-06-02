@@ -1,5 +1,5 @@
 /* eslint-disable  @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
+// @ts-nocheck
 
 "use client";
 
@@ -32,7 +32,10 @@ export function Dashboard() {
   const [showAccountSetup, setShowAccountSetup] = useState(false);
   const [sentWelcome, setSentWelcome] = useState(false);
   const [showSpotifyConnect, setShowSpotifyConnect] = useState(false);
-  const [userDisplayName, setUserDisplayName] = useState<string | null>(null);
+  const [farcastUserData, setFarcastUserData] = useState<{
+    username?: string;
+    displayName?: string;
+  } | null>(null);
 
   // Hooks
   const router = useRouter();
@@ -49,26 +52,37 @@ export function Dashboard() {
     refreshTokenIfNeeded
   } = useAuthStore();
 
-  // Fetch Farcaster user data when needed
+  // Fetch Farcaster user data when needed - FIXED API CALL
   useEffect(() => {
     const fetchUserData = async () => {
-      if (fid && !userDisplayName && !spotifyUser?.name) {
+      if (fid) {
         try {
-          const response = await fetch(`/api/neynar/search?query=${fid}`);
+          // Use the correct Neynar bulk users endpoint
+          const response = await fetch(`/api/neynar/user/bulk?fids=${fid}`);
           if (response.ok) {
             const data = await response.json();
             if (data.users?.length > 0) {
               const userData = data.users[0];
-              setUserDisplayName(userData.displayName || userData.username);
+              // Store both display name and username from Farcaster
+              setFarcastUserData({
+                username: userData.username || null,
+                displayName: userData.display_name || null
+              });
             }
+          } else {
+            console.error('Failed to fetch user data:', response.status, response.statusText);
           }
         } catch (error) {
           console.error("Error fetching user data:", error);
         }
       }
     };
-    fetchUserData();
-  }, [fid, userDisplayName, spotifyUser]);
+
+    // Only fetch if we have fid and don't have data yet
+    if (fid && !farcastUserData) {
+      fetchUserData();
+    }
+  }, [fid, farcastUserData]);
 
   // Show/hide Spotify connect based on authentication state
   useEffect(() => {
@@ -142,12 +156,17 @@ export function Dashboard() {
         await fetchCurrentlyPlaying();
         await fetchTopTracks('medium_term');
       }
+
+      // Also refresh Farcaster user data
+      if (fid) {
+        setFarcastUserData(null); // Reset to trigger refetch
+      }
     } catch (error) {
       console.error("Error refreshing data:", error);
     } finally {
       setTimeout(() => setIsRefreshing(false), 500);
     }
-  }, [refreshTokenIfNeeded, fetchCurrentlyPlaying, fetchTopTracks]);
+  }, [refreshTokenIfNeeded, fetchCurrentlyPlaying, fetchTopTracks, fid]);
 
   const handleConnectSpotify = useCallback(() => {
     if (isMiniApp) {
@@ -175,8 +194,12 @@ export function Dashboard() {
     </button>
   );
 
-  // Get user info
-  const userName = spotifyUser?.name || userDisplayName || (fid ? `@${fid}` : "");
+  // Get user info - PRIORITIZE FARCASTER DATA
+  const userName = farcastUserData?.displayName ||
+    farcastUserData?.username ||
+    spotifyUser?.name ||
+    (fid ? `@${fid}` : "");
+
   const fidString = fid ? String(fid) : "";
 
   // Safety check for context
@@ -244,13 +267,14 @@ export function Dashboard() {
 
         <div className="mt-3 flex items-center">
           <div className="w-10 h-10 rounded-full bg-purple-700 flex items-center justify-center">
-            {userName ? userName.charAt(0) : ''}
+            {userName ? userName.charAt(0).toUpperCase() : ''}
           </div>
           <div className="ml-3 flex-grow overflow-hidden">
             <p className="font-medium truncate">{userName}</p>
-            <div className="flex text-xs text-gray-300">
-              {fidString && <span className="mr-2">FID: {fidString}</span>}
+            <div className="flex text-xs text-gray-300 flex-wrap gap-2">
+              {fidString && <span>FID: {fidString}</span>}
               {spotifyId && <span className="bg-green-800/50 px-1 rounded text-xs">Spotify Connected</span>}
+              {farcastUserData && <span className="bg-blue-800/50 px-1 rounded text-xs">Farcaster Connected</span>}
             </div>
           </div>
           {!spotifyId && (

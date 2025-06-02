@@ -5,6 +5,7 @@ import { Providers } from "~/app/providers";
 import Script from "next/script";
 
 import AdminWrapper from "~/components/admin/AdminWrapper";
+import { AuthInitializer } from "~/components/AuthInitializer";
 
 export const metadata: Metadata = {
   title: process.env.NEXT_PUBLIC_FRAME_NAME || "Timbra",
@@ -58,12 +59,13 @@ export default async function RootLayout({
         />
       </head>
       <body className="min-h-screen bg-black text-white">
-        <Providers session={session}>
+        <AuthInitializer>
+        <Providers session={session}>          
           {children}
-
           {/* Admin UI Components carregados de forma dinâmica */}
           <AdminWrapper />
         </Providers>
+        </AuthInitializer>
       </body>
     </html>
   );

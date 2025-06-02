@@ -10,6 +10,7 @@ import {
     validateToken,
     refreshAccessToken
 } from '~/lib/spotify-api-service';
+import { listeningHistoryService } from '~/lib/services/listeningHistoryService';
 
 // Types for Spotify tracks
 interface SpotifyTrack {
@@ -50,6 +51,27 @@ export interface UserTrackData {
     };
 }
 
+interface FarcasterUser {
+    fid: number;
+    username?: string;
+    displayName?: string;
+    pfpUrl?: string;
+}
+
+interface SpotifyUser {
+    id: string;
+    display_name?: string;
+    email?: string;
+    external_urls?: {
+        spotify: string;
+    };
+    images?: Array<{
+        url: string;
+        height: number;
+        width: number;
+    }>;
+}
+
 // Interface para resposta da API de vinculação de contas
 interface LinkAccountsResponse {
     success: boolean;
@@ -77,8 +99,14 @@ interface AuthState {
     } | null;
     isAuthenticated: boolean;
     fid: number | null;
+    userId: string | null;
     isLinked: boolean;
     linkingError: string | null;
+
+    // User data (for compatibility)
+    farcaster: FarcasterUser | null;
+    spotify: SpotifyUser | null;
+    authMethod: 'farcaster' | 'spotify' | 'both' | null;
 
     // Music data
     currentlyPlaying: SpotifyTrack | null;
@@ -86,6 +114,11 @@ interface AuthState {
     isLoadingTracks: Record<TimeRange, boolean>;
     loadingCurrentTrack: boolean;
     error: string | null;
+
+    lastSavedTrack: string | null;
+    autoSaveEnabled: boolean;
+
+    isMiniApp: boolean | null;
 
     connectedUsers: {
         fid: number;
@@ -123,7 +156,19 @@ interface AuthState {
         profileImage?: string;
     }) => void;
 
+    setAuth: (authData: {
+        isAuthenticated: boolean;
+        spotifyId: string;
+        accessToken: string;
+        refreshToken: string;
+        expiresAt: number;
+        userId: string;
+        fid: number;
+    }) => void;
     setFarcasterAuth: (data: { fid: number }) => Promise<void>;
+    setFarcasterUser: (user: FarcasterUser | null) => void;
+    setSpotifyUser: (user: SpotifyUser | null, token?: string, refreshToken?: string, expiresIn?: number) => void;
+    setMiniAppStatus: (isMiniApp: boolean) => void;
     clearAuth: () => void;
     isExpired: () => boolean;
     refreshTokenIfNeeded: () => Promise<boolean>;
@@ -132,6 +177,11 @@ interface AuthState {
     fetchSpotifyProfile: () => Promise<void>;
     clearMusicData: () => void;
     setError: (error: string | null) => void;
+    toggleAutoSave: (enabled: boolean) => void;
+
+    // Derived getters
+    getDisplayName: () => string;
+    getProfileImage: () => string | undefined;
 }
 
 // Create store with persistence
@@ -149,9 +199,20 @@ export const useAuthStore = create<AuthState>()(
             spotifyId: null,
             spotifyUser: null,
             isAuthenticated: false,
+            userId: null,
             fid: null,
             isLinked: false,
             linkingError: null,
+
+            // User data
+            farcaster: null,
+            spotify: null,
+            authMethod: null,
+
+            lastSavedTrack: null,
+            autoSaveEnabled: true,
+
+            isMiniApp: null,
 
             // Initial music data state
             currentlyPlaying: null,
@@ -172,6 +233,19 @@ export const useAuthStore = create<AuthState>()(
             connectedUsers: [],
             isLoadingConnections: false,
             userTopTracks: {},
+
+            setAuth: (authData) => {
+                set({
+                    isAuthenticated: authData.isAuthenticated,
+                    spotifyId: authData.spotifyId,
+                    accessToken: authData.accessToken,
+                    refreshToken: authData.refreshToken,
+                    expiresAt: authData.expiresAt,
+                    userId: authData.userId,
+                    fid: authData.fid,
+                    error: null,
+                });
+            },
 
             fetchUserCurrentTrack: async (fidOrSpotifyId) => {
                 const state = get();
@@ -353,7 +427,45 @@ export const useAuthStore = create<AuthState>()(
             setLinkedStatus: (status) => set({ isLinked: status }),
             setLinkingError: (error) => set({ linkingError: error }),
 
-            // Nova função para vincular contas Farcaster e Spotify
+            // Set Farcaster user
+            setFarcasterUser: (user) => set((state) => {
+                const isLinked = !!(user && state.spotify);
+                return {
+                    farcaster: user,
+                    fid: user?.fid || null,
+                    isAuthenticated: !!user || !!state.spotify,
+                    authMethod: user
+                        ? (state.spotify ? 'both' : 'farcaster')
+                        : (state.spotify ? 'spotify' : null),
+                    isLinked,
+                };
+            }),
+
+            // Set Spotify user
+            setSpotifyUser: (user, token, refreshToken, expiresIn) => set((state) => {
+                const spotifyExpiresAt = expiresIn
+                    ? Date.now() + expiresIn * 1000
+                    : state.expiresAt;
+
+                const isLinked = !!(user && state.farcaster);
+
+                return {
+                    spotify: user,
+                    spotifyId: user?.id || null,
+                    accessToken: token !== undefined ? token : state.accessToken,
+                    refreshToken: refreshToken !== undefined ? refreshToken : state.refreshToken,
+                    expiresAt: spotifyExpiresAt,
+                    isAuthenticated: !!user || !!state.farcaster,
+                    authMethod: user
+                        ? (state.farcaster ? 'both' : 'spotify')
+                        : (state.farcaster ? 'farcaster' : null),
+                    isLinked,
+                };
+            }),
+
+            // Set mini app status
+            setMiniAppStatus: (isMiniApp) => set({ isMiniApp }),
+
             linkAccounts: async (fid, spotifyId) => {
                 try {
                     console.log(`Linking accounts for FID: ${fid} and Spotify ID: ${spotifyId}`);
@@ -411,7 +523,6 @@ export const useAuthStore = create<AuthState>()(
                 }
             },
 
-            // Authentication functions
             setSpotifyAuth: (data) => {
                 // Calcular o timestamp de expiração baseado no expiresIn
                 const expiresAt = Math.floor((data.tokenTimestamp + (data.expiresIn * 1000)) / 1000);
@@ -460,6 +571,9 @@ export const useAuthStore = create<AuthState>()(
                     isAuthenticated: false,
                     fid: null,
                     isLinked: false,
+                    farcaster: null,
+                    spotify: null,
+                    authMethod: null,
                     currentlyPlaying: null,
                     topTracks: {
                         short_term: [],
@@ -604,6 +718,29 @@ export const useAuthStore = create<AuthState>()(
                         currentlyPlaying: track,
                         loadingCurrentTrack: false
                     });
+
+                    if (track && state.autoSaveEnabled && state.userId && state.fid) {
+                        // Only save if it's a different track or significant progress change
+                        const shouldSave = (
+                            state.lastSavedTrack !== track.id ||
+                            (track.isPlaying && track.progressMs && track.progressMs > 30000) // After 30 seconds
+                        );
+
+                        if (shouldSave) {
+                            try {
+                                await listeningHistoryService.saveListeningHistory(
+                                    state.userId,
+                                    state.fid,
+                                    track
+                                );
+
+                                set({ lastSavedTrack: track.id });
+                                console.log('Track saved to listening history:', track.title);
+                            } catch (saveError) {
+                                console.error('Error saving track to history:', saveError);
+                            }
+                        }
+                    }
                 } catch (error) {
                     console.error("Error fetching currently playing track:", error);
                     set({
@@ -626,14 +763,58 @@ export const useAuthStore = create<AuthState>()(
             },
 
             setError: (error) => set({ error }),
+            toggleAutoSave: (enabled) => set({ autoSaveEnabled: enabled }),
+
+            getDisplayName: () => {
+                const state = get();
+
+                if (state.farcaster?.username) {
+                    return state.farcaster.username;
+                }
+
+                if (state.farcaster?.displayName) {
+                    return state.farcaster.displayName;
+                }
+
+                if (state.spotify?.display_name) {
+                    return state.spotify.display_name;
+                }
+
+                return 'User';
+            },
+
+            getProfileImage: () => {
+                const state = get();
+
+                if (state.farcaster?.pfpUrl) {
+                    return state.farcaster.pfpUrl;
+                }
+
+                if (state.spotify?.images && state.spotify.images.length > 0) {
+                    return state.spotify.images[0].url;
+                }
+
+                return undefined;
+            },
         }),
         {
             name: 'spotify-auth-storage',
             // Only persist essential auth data, not tokens or music data
             partialize: (state) => ({
+                isAuthenticated: state.isAuthenticated,
+                authMethod: state.authMethod,
+                farcaster: state.farcaster,
+                spotify: state.spotify ? {
+                    id: state.spotify.id,
+                    display_name: state.spotify.display_name,
+                    images: state.spotify.images,
+                } : null,
                 spotifyId: state.spotifyId,
                 fid: state.fid,
+                userId: state.userId,
                 isLinked: state.isLinked,
+                autoSaveEnabled: state.autoSaveEnabled,
+                isMiniApp: state.isMiniApp,
             }),
         }
     )

@@ -1,17 +1,17 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, react/no-unescaped-entities, @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
+/* eslint-disable react/no-unescaped-entities, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import Head from 'next/head';
 import { Button } from '~/components/ui/Button';
 import { ShareCard } from '~/components/ShareCard';
 import { useFrame } from '~/components/providers/FrameProvider';
-import { useAuthStore } from '~/lib/stores/authStore';
+import { useAuthStore, type TimeRange } from '~/lib/stores/authStore';
 import { SpotifyImage } from '~/components/SpotifyImage';
-import Head from 'next/head';
+import { NavigationHelper } from '~/lib/utils/navigation';
 import sdk from "@farcaster/frame-sdk";
-import { TimeRange } from '~/stores/spotifyDataStore';
+import { formatDuration } from '~/lib/utils';
 
 type ResultsType = 'top-tracks' | 'currently-playing' | 'vibe-match';
 
@@ -72,19 +72,26 @@ export default function ResultsPage() {
             setError(null);
 
             try {
+                // For unauthenticated users, still show the page with proper messaging
+                if (!isAuthenticated) {
+                    setIsLoading(false);
+                    return;
+                }
+
                 // Check if token is valid and refresh if needed
                 const tokenValid = await refreshTokenIfNeeded();
 
                 if (!tokenValid || !accessToken) {
                     console.warn('No valid access token available');
+                    setError('Authentication required. Please connect your Spotify account.');
                     setIsLoading(false);
                     return;
                 }
 
                 // Load data based on the view type
                 if (type === 'currently-playing') {
-                    // Only fetch if not already loading
-                    if (!loadingCurrentTrack && (!currentlyPlaying || currentlyPlaying.length === 0)) {
+                    // Only fetch if not already loading and no current data
+                    if (!loadingCurrentTrack && !currentlyPlaying) {
                         await fetchCurrentlyPlaying();
                     }
                 } else if (type === 'top-tracks') {
@@ -101,11 +108,7 @@ export default function ResultsPage() {
             }
         };
 
-        if (isAuthenticated) {
-            loadData();
-        } else {
-            setIsLoading(false);
-        }
+        loadData();
     }, [
         type,
         timeRange,
@@ -171,17 +174,36 @@ export default function ResultsPage() {
         }
     };
 
-    // Handle opening the full app
+    // Handle opening the full app using NavigationHelper
     const handleOpenApp = () => {
-        if (isMiniApp && typeof sdk?.actions?.openUrl === 'function') {
-            sdk.actions.openUrl(baseUrl);
-        } else {
-            window.location.href = baseUrl;
+        NavigationHelper.navigate(baseUrl, false); // Internal navigation
+    };
+
+    // Handle navigation to different time ranges using NavigationHelper
+    const handleTimeRangeChange = (range: TimeRange) => {
+        const newUrl = `/results?type=top-tracks&timeRange=${range}`;
+        NavigationHelper.navigate(newUrl, false); // Internal navigation within the frame
+    };
+
+    // Handle opening Spotify tracks using NavigationHelper
+    const handleOpenSpotify = (track: any) => {
+        if (track?.uri) {
+            NavigationHelper.openSpotify(track.uri);
+        } else if (track) {
+            NavigationHelper.openSpotify(undefined, undefined, `${track.title} ${track.artist}`);
         }
+    };
+
+    // Handle sharing using NavigationHelper
+    const handleShare = () => {
+        const currentUrl = `${baseUrl}/results?type=${type}${timeRange ? `&timeRange=${timeRange}` : ''}`;
+        NavigationHelper.shareFarcaster(shareMessage, [currentUrl]);
     };
 
     // Handle refreshing the data
     const handleRefresh = useCallback(async () => {
+        if (!isAuthenticated) return;
+
         setIsLoading(true);
         setError(null);
 
@@ -205,7 +227,7 @@ export default function ResultsPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [type, timeRange, refreshTokenIfNeeded, fetchCurrentlyPlaying, fetchTopTracks, accessToken]);
+    }, [type, timeRange, refreshTokenIfNeeded, fetchCurrentlyPlaying, fetchTopTracks, accessToken, isAuthenticated]);
 
     // Friendly labels for time periods
     const timeRangeLabels: Record<TimeRange, string> = {
@@ -213,6 +235,20 @@ export default function ResultsPage() {
         medium_term: 'Last 6 Months',
         long_term: 'All Time'
     };
+
+    // Helper function to format time
+    const formatTime = (ms: number): string => {
+        if (!ms) return '0:00';
+        const totalSeconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    };
+
+    // Check if we're currently loading
+    const isCurrentlyLoading = isLoading ||
+        (type === 'top-tracks' && isLoadingTracks[timeRange]) ||
+        (type === 'currently-playing' && loadingCurrentTrack);
 
     return (
         <>
@@ -261,20 +297,30 @@ export default function ResultsPage() {
 
                     {/* Error display */}
                     {error && (
-                        <div className="mb-3 p-2 text-sm bg-red-900/30 text-red-200 rounded-md">
-                            {error}
-                            <Button
-                                onClick={handleRefresh}
-                                className="ml-2 text-xs px-2 py-0.5 bg-red-600 hover:bg-red-700"
-                            >
-                                Retry
-                            </Button>
+                        <div className="mb-3 p-3 text-sm bg-red-900/30 text-red-200 rounded-md">
+                            <p className="mb-2">{error}</p>
+                            <div className="flex gap-2">
+                                <Button
+                                    onClick={handleRefresh}
+                                    className="text-xs px-2 py-1 bg-red-600 hover:bg-red-700"
+                                >
+                                    Retry
+                                </Button>
+                                {!isAuthenticated && (
+                                    <Button
+                                        onClick={handleOpenApp}
+                                        className="text-xs px-2 py-1 bg-green-600 hover:bg-green-700"
+                                    >
+                                        Connect Spotify
+                                    </Button>
+                                )}
+                            </div>
                         </div>
                     )}
 
                     {/* Results content - customize based on the type */}
                     <div className="bg-purple-800/30 rounded-lg p-6 mb-6">
-                        {isLoading || isLoadingTracks[timeRange] || loadingCurrentTrack ? (
+                        {isCurrentlyLoading ? (
                             <div className="flex flex-col items-center py-8">
                                 <div className="w-8 h-8 border-t-2 border-b-2 border-purple-500 rounded-full animate-spin mb-4"></div>
                                 <p className="text-purple-300">Loading your {type === 'top-tracks' ? 'top tracks' : 'music data'}...</p>
@@ -283,7 +329,10 @@ export default function ResultsPage() {
                             <div className="flex flex-col items-center">
                                 <h2 className="text-xl font-semibold mb-4">Now Playing</h2>
 
-                                <div className="relative w-40 h-40 mb-4">
+                                <div
+                                    className="relative w-40 h-40 mb-4 cursor-pointer"
+                                    onClick={() => handleOpenSpotify(currentlyPlaying)}
+                                >
                                     <SpotifyImage
                                         src={currentlyPlaying.coverArt || '/api/placeholder/160/160'}
                                         alt={`${currentlyPlaying.title} by ${currentlyPlaying.artist}`}
@@ -291,16 +340,34 @@ export default function ResultsPage() {
                                         height={160}
                                         className="rounded-lg"
                                     />
+                                    {/* Spotify overlay */}
+                                    <div className="absolute bottom-2 right-2">
+                                        <div className="bg-green-500 hover:bg-green-600 text-white p-2 rounded-full transition-colors">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.84-.179-.84-.6 0-.359.24-.66.54-.78 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.242 1.021zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.42 1.56-.299.421-1.02.599-1.559.3z" />
+                                            </svg>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <h3 className="text-lg font-medium">{currentlyPlaying.title}</h3>
-                                <p className="text-gray-300">{currentlyPlaying.artist}</p>
+                                <h3
+                                    className="text-lg font-medium text-center cursor-pointer hover:underline"
+                                    onClick={() => handleOpenSpotify(currentlyPlaying)}
+                                >
+                                    {currentlyPlaying.title}
+                                </h3>
+                                <p
+                                    className="text-gray-300 text-center cursor-pointer hover:underline"
+                                    onClick={() => handleOpenSpotify(currentlyPlaying)}
+                                >
+                                    {currentlyPlaying.artist}
+                                </p>
                                 {currentlyPlaying.album && (
-                                    <p className="text-sm text-gray-400">{currentlyPlaying.album}</p>
+                                    <p className="text-sm text-gray-400 text-center">{currentlyPlaying.album}</p>
                                 )}
 
                                 {/* Progress bar for currently playing track */}
-                                {currentlyPlaying.progressMs && currentlyPlaying.durationMs && (
+                                {currentlyPlaying.progressMs !== undefined && currentlyPlaying.durationMs && (
                                     <div className="w-full mt-4">
                                         <div className="w-full bg-gray-700 rounded-full h-1.5">
                                             <div
@@ -314,6 +381,22 @@ export default function ResultsPage() {
                                         </div>
                                     </div>
                                 )}
+
+                                {/* Action buttons */}
+                                <div className="flex gap-3 mt-4">
+                                    <Button
+                                        onClick={() => handleOpenSpotify(currentlyPlaying)}
+                                        className="bg-green-600 hover:bg-green-700 text-sm px-4 py-2"
+                                    >
+                                        Open in Spotify
+                                    </Button>
+                                    <Button
+                                        onClick={handleShare}
+                                        className="bg-purple-600 hover:bg-purple-700 text-sm px-4 py-2"
+                                    >
+                                        Share
+                                    </Button>
+                                </div>
                             </div>
                         ) : type === 'top-tracks' && topTracks[timeRange]?.length > 0 ? (
                             <div>
@@ -327,32 +410,36 @@ export default function ResultsPage() {
                                 {/* Time range tabs */}
                                 <div className="flex space-x-2 mb-4 text-xs justify-center">
                                     {Object.entries(timeRangeLabels).map(([range, label]) => (
-                                        <a
+                                        <button
                                             key={range}
-                                            href={`/results?type=top-tracks&timeRange=${range}`}
-                                            className={`px-2 py-1 rounded ${timeRange === range
+                                            onClick={() => handleTimeRangeChange(range as TimeRange)}
+                                            className={`px-2 py-1 rounded transition-colors ${timeRange === range
                                                 ? 'bg-purple-700 text-white'
                                                 : 'bg-purple-900/50 text-gray-300 hover:bg-purple-800/50'
                                                 }`}
                                         >
                                             {label}
-                                        </a>
+                                        </button>
                                     ))}
                                 </div>
 
                                 <div className="space-y-3 max-h-80 overflow-y-auto">
-                                    {topTracks[timeRange].slice(0, 5).map((track, index) => (
-                                        <div key={track.id} className="flex items-center bg-purple-900/30 p-2 rounded">
+                                    {topTracks[timeRange].slice(0, 10).map((track, index) => (
+                                        <div
+                                            key={track.id}
+                                            className="flex items-center bg-purple-900/30 p-2 rounded cursor-pointer hover:bg-purple-900/50 transition-colors"
+                                            onClick={() => handleOpenSpotify(track)}
+                                        >
                                             <div className="w-8 h-8 flex items-center justify-center font-medium text-gray-400">
                                                 {index + 1}
                                             </div>
-                                            <div className="w-10 h-10 mx-2">
+                                            <div className="w-10 h-10 mx-2 relative">
                                                 <SpotifyImage
                                                     src={track.coverArt || '/api/placeholder/40/40'}
                                                     alt={track.title}
-                                                    width={40}
-                                                    height={40}
-                                                    className="rounded"
+                                                    fill
+                                                    sizes="40px"
+                                                    className="rounded object-cover"
                                                 />
                                             </div>
                                             <div className="flex-1 overflow-hidden">
@@ -367,6 +454,22 @@ export default function ResultsPage() {
                                         </div>
                                     ))}
                                 </div>
+
+                                {/* Action buttons */}
+                                <div className="flex gap-3 mt-4 justify-center">
+                                    <Button
+                                        onClick={handleShare}
+                                        className="bg-purple-600 hover:bg-purple-700 text-sm px-4 py-2"
+                                    >
+                                        Share Top Tracks
+                                    </Button>
+                                    <Button
+                                        onClick={handleRefresh}
+                                        className="bg-gray-600 hover:bg-gray-700 text-sm px-4 py-2"
+                                    >
+                                        Refresh
+                                    </Button>
+                                </div>
                             </div>
                         ) : type === 'vibe-match' ? (
                             <div className="text-center">
@@ -377,46 +480,68 @@ export default function ResultsPage() {
 
                                 {/* Mock vibe matches */}
                                 <div className="space-y-3">
-                                    <div className="bg-purple-900/30 p-3 rounded-lg">
+                                    <div
+                                        className="bg-purple-900/30 p-3 rounded-lg cursor-pointer hover:bg-purple-900/50 transition-colors"
+                                        onClick={() => NavigationHelper.viewProfile(1245)}
+                                    >
                                         <p className="font-medium">horsefacts</p>
                                         <p className="text-sm text-gray-400">95% match</p>
                                     </div>
-                                    <div className="bg-purple-900/30 p-3 rounded-lg">
+                                    <div
+                                        className="bg-purple-900/30 p-3 rounded-lg cursor-pointer hover:bg-purple-900/50 transition-colors"
+                                        onClick={() => NavigationHelper.viewProfile(5678)}
+                                    >
                                         <p className="font-medium">deodad</p>
                                         <p className="text-sm text-gray-400">87% match</p>
                                     </div>
-                                    <div className="bg-purple-900/30 p-3 rounded-lg">
+                                    <div
+                                        className="bg-purple-900/30 p-3 rounded-lg cursor-pointer hover:bg-purple-900/50 transition-colors"
+                                        onClick={() => NavigationHelper.viewProfile(9012)}
+                                    >
                                         <p className="font-medium">varunsrin</p>
                                         <p className="text-sm text-gray-400">82% match</p>
                                     </div>
                                 </div>
+
+                                {/* Action button */}
+                                <div className="mt-6">
+                                    <Button
+                                        onClick={handleShare}
+                                        className="bg-purple-600 hover:bg-purple-700 text-sm px-4 py-2"
+                                    >
+                                        Share Vibe Match
+                                    </Button>
+                                </div>
                             </div>
                         ) : (
                             <div className="text-center py-8">
-                                <p className="text-lg">No results available</p>
-                                <p className="text-sm text-gray-400 mt-2">
-                                    {isAuthenticated ?
-                                        "Try listening to some music first!" :
-                                        "Connect your Spotify account to see your music data"}
+                                <p className="text-lg mb-2">No results available</p>
+                                <p className="text-sm text-gray-400 mb-4">
+                                    {!isAuthenticated ?
+                                        "Connect your Spotify account to see your music data" :
+                                        type === 'currently-playing' ?
+                                            "No track currently playing" :
+                                            "No tracks found for this period"
+                                    }
                                 </p>
-                                {isAuthenticated && (
+                                {isAuthenticated ? (
                                     <Button
                                         onClick={handleRefresh}
-                                        className="mt-4 bg-purple-600 hover:bg-purple-700"
+                                        className="bg-purple-600 hover:bg-purple-700"
                                     >
                                         Refresh Data
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        onClick={handleOpenApp}
+                                        className="bg-green-600 hover:bg-green-700"
+                                    >
+                                        Connect Spotify
                                     </Button>
                                 )}
                             </div>
                         )}
                     </div>
-
-                    {/* Share Card */}
-                    <ShareCard
-                        title="Share your results"
-                        message={shareMessage}
-                        imageUrl={imageUrl}
-                    />
 
                     {/* Call to action */}
                     <div className="mt-8 flex flex-col items-center">
@@ -457,13 +582,4 @@ export default function ResultsPage() {
             </div>
         </>
     );
-}
-
-// Helper function to format milliseconds into MM:SS
-function formatTime(ms: number): string {
-    if (!ms) return '0:00';
-    const totalSeconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
