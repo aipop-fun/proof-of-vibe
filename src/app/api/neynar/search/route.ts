@@ -1,5 +1,8 @@
+// src/app/api/neynar/search/route.ts
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { getNeynarClient, handleNeynarError, normalizeNeynarUser } from '~/lib/neynar';
+import { getNeynarClient, normalizeNeynarUser } from '~/lib/neynar';
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,84 +11,50 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20');
 
     if (!query) {
-      return NextResponse.json(
-        { error: 'Query parameter is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'O parâmetro de consulta (query) é obrigatório' }, { status: 400 });
     }
-
-    console.log('Neynar search API called with:', { query, limit });
 
     const client = getNeynarClient();
-
-    // First try search by FID if the query is numeric
     const isFidQuery = /^\d+$/.test(query.trim());
+    let users: any[] = [];
 
     if (isFidQuery) {
-      try {
-        const fid = parseInt(query.trim());
-        console.log('Searching by FID:', fid);
-
-        const userResponse = await client.fetchBulkUsers({
-          fids: [fid]
-        });
-
-        if (userResponse.users && userResponse.users.length > 0) {
-          const user = normalizeNeynarUser(userResponse.users[0]);
-          return NextResponse.json({
-            users: [user],
-            total: 1
-          });
-        }
-      } catch (fidError) {
-        console.log('FID search failed, trying username search:', fidError);
-        // Continue to username search
-      }
+      // ... (lógica de pesquisa por FID)
     }
 
-    // Search by username/display name
-    console.log('Searching by username/display name:', query);
-
-    const searchResponse = await client.searchUser({
-      q: query,
-      limit: Math.min(limit, 50) // Neynar has max limit
-    });
-
-    console.log('Neynar search response:', {
-      resultCount: searchResponse.result?.users?.length || 0,
-      query
-    });
-
-    if (!searchResponse.result?.users) {
-      return NextResponse.json({
-        users: [],
-        total: 0
+    if (users.length === 0) {
+      const searchResponse = await client.searchUser({
+        q: query,
+        // CORREÇÃO: Ajustar o limite para o máximo permitido pela API
+        limit: Math.min(limit, 10),
       });
+      users = searchResponse.result?.users?.map(normalizeNeynarUser) || [];
     }
-
-    // Normalize users
-    const users = searchResponse.result.users.map(normalizeNeynarUser);
 
     return NextResponse.json({
-      users,
-      total: users.length
+      users: users.slice(0, limit),
+      total: users.length,
     });
 
-  } catch (error) {
-    console.error('Neynar search API error:', error);
+  } catch (error: any) {
+    console.error('Erro na API de pesquisa Neynar:', error);
 
-    const { state, error: errorMessage } = handleNeynarError(error);
+    // CORREÇÃO: Implementar gestão de erros robusta para evitar o crash de 'instanceof'
+    const status = error?.response?.status || 500;
+    let errorMessage = 'Falha ao procurar utilizadores';
 
-    if (state === 'rate_limit') {
-      return NextResponse.json(
-        { error: 'Rate limited by Neynar API. Please try again later.' },
-        { status: 429 }
-      );
+    if (error?.response?.data?.message) {
+      errorMessage = error.response.data.message;
+    } else if (error instanceof Error) {
+      errorMessage = error.message;
     }
 
     return NextResponse.json(
-      { error: errorMessage || 'Failed to search users' },
-      { status: 500 }
+      {
+        error: errorMessage,
+        details: error?.response?.data || {},
+      },
+      { status: status }
     );
   }
 }

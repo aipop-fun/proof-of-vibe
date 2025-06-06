@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
 
             try {
                 const response = await fetch(
-                    `https://api.neynar.com/v2/farcaster/user/search?q=${encodeURIComponent(query)}&limit=${Math.min(limit, 50)}`,
+                    `https://api.neynar.com/v2/farcaster/user/search?q=${encodeURIComponent(query)}&limit=${Math.min(limit, 10)}`,
                     {
                         headers: {
                             'accept': 'application/json',
