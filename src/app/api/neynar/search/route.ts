@@ -1,154 +1,91 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getNeynarClient } from "~/lib/neynar";
-import { cache } from "~/lib/cache";
+import { NextRequest, NextResponse } from 'next/server';
+import { getNeynarClient, handleNeynarError, normalizeNeynarUser } from '~/lib/neynar';
 
-// Define types for better type safety
-interface NeynarUser {
-  fid: number;
-  username?: string;
-  displayName?: string;
-  display_name?: string;
-  pfpUrl?: string;
-  pfp_url?: string;
-  avatar?: string;
-  bio?: string;
-  followerCount?: number;
-  followers?: number;
-  followingCount?: number;
-  following?: number;
-  verifiedAddresses?: {
-    eth_addresses: string[];
-    sol_addresses: string[];
-  };
-  lastActiveTimestamp?: number;
-  lastActive?: number;
-}
-
-interface ApiResponse {
-  users: ResponseUser[];
-  error?: string;
-  cached?: boolean;
-}
-
-interface ResponseUser {
-  fid: number;
-  username: string;
-  displayName: string;
-  pfpUrl: string | null;
-  bio: string;
-  followerCount: number;
-  followingCount: number;
-  verifiedAddresses: {
-    eth_addresses: string[];
-    sol_addresses: string[];
-  };
-  lastActiveTimestamp: number | null;
-}
-
-/**
- * API route for searching Farcaster users through Neynar
- */
 export async function GET(request: NextRequest) {
   try {
-    // Extract query parameters
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('query');
-    const limit = parseInt(searchParams.get('limit') || '20', 10);
+    const limit = parseInt(searchParams.get('limit') || '20');
 
-    // Validate query parameter
-    if (!query?.trim()) {
-      return NextResponse.json<ApiResponse>(
-        { error: 'Query parameter is required', users: [] },
+    if (!query) {
+      return NextResponse.json(
+        { error: 'Query parameter is required' },
         { status: 400 }
       );
     }
 
-    // Normalize query and create cache key
-    const normalizedQuery = query.trim().toLowerCase();
-    const cacheKey = `neynar_search:${normalizedQuery}:${limit}`;
+    console.log('Neynar search API called with:', { query, limit });
 
-    // Check cache first
-    const cachedResults = await cache.get<ResponseUser[]>(cacheKey);
-    if (cachedResults) {
-      return NextResponse.json<ApiResponse>(
-        { users: cachedResults, cached: true },
-        {
-          status: 200,
-          headers: { 'Cache-Control': 'max-age=300, s-maxage=600, stale-while-revalidate=86400' }
+    const client = getNeynarClient();
+
+    // Primeiro tentar busca por FID se o query for numérico
+    const isFidQuery = /^\d+$/.test(query.trim());
+
+    if (isFidQuery) {
+      try {
+        const fid = parseInt(query.trim());
+        console.log('Searching by FID:', fid);
+
+        const userResponse = await client.fetchBulkUsers({
+          fids: [fid]
+        });
+
+        if (userResponse.users && userResponse.users.length > 0) {
+          const user = normalizeNeynarUser(userResponse.users[0]);
+          return NextResponse.json({
+            users: [user],
+            total: 1
+          });
         }
-      );
+      } catch (fidError) {
+        console.log('FID search failed, trying username search:', fidError);
+        // Continue para busca por username
+      }
     }
 
-    // Get API key
-    const apiKey = process.env.NEYNAR_API_KEY;
-    if (!apiKey) {
-      throw new Error('NEYNAR_API_KEY not configured');
-    }
+    // Busca por username/display name
+    console.log('Searching by username/display name:', query);
 
-    // Determine search strategy based on query type
-    const isFid = /^\d+$/.test(normalizedQuery);
-    let users: ResponseUser[] = [];
+    const searchResponse = await client.searchUser({
+      q: query,
+      limit: Math.min(limit, 50) // Neynar tem limite máximo
+    });
 
-    if (isFid) {
-      // Search by FID
-      const fid = parseInt(normalizedQuery, 10);
-      const response = await fetch(`https://api.neynar.com/v2/farcaster/user?fid=${fid}`, {
-        headers: { 'accept': 'application/json', 'api_key': apiKey }
+    console.log('Neynar search response:', {
+      resultCount: searchResponse.result?.users?.length || 0,
+      query
+    });
+
+    if (!searchResponse.result?.users) {
+      return NextResponse.json({
+        users: [],
+        total: 0
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.result?.user) {
-          users = [mapNeynarUserToResponse(data.result.user)];
-        }
-      }
-    } else {
-      // Search by username/display name
-      const client = getNeynarClient();
-      const searchResult = await client.searchUser({ q: normalizedQuery, limit });
-
-      if (searchResult.result?.users) {
-        users = searchResult.result.users.map(mapNeynarUserToResponse);
-      }
     }
 
-    // Cache results
-    await cache.set(cacheKey, users, 300);
+    // Normalizar usuários
+    const users = searchResponse.result.users.map(normalizeNeynarUser);
 
-    return NextResponse.json<ApiResponse>(
-      { users },
-      { headers: { 'Cache-Control': 'max-age=300, s-maxage=600, stale-while-revalidate=86400' } }
-    );
+    return NextResponse.json({
+      users,
+      total: users.length
+    });
+
   } catch (error) {
-    // Handle rate limits
-    if (error instanceof Error && error.message.includes('rate limit')) {
-      return NextResponse.json<ApiResponse>(
-        { error: 'Rate limit exceeded, please try again later', users: [] },
+    console.error('Neynar search API error:', error);
+
+    const { state, error: errorMessage } = handleNeynarError(error);
+
+    if (state === 'rate_limit') {
+      return NextResponse.json(
+        { error: 'Rate limited by Neynar API. Please try again later.' },
         { status: 429 }
       );
     }
 
-    // Handle general errors
-    return NextResponse.json<ApiResponse>(
-      { error: error instanceof Error ? error.message : 'An unexpected error occurred', users: [] },
+    return NextResponse.json(
+      { error: errorMessage || 'Failed to search users' },
       { status: 500 }
     );
   }
-}
-
-/**
- * Maps Neynar user to a consistent response format
- */
-function mapNeynarUserToResponse(user: NeynarUser): ResponseUser {
-  return {
-    fid: user.fid,
-    username: user.username || `user${user.fid}`,
-    displayName: user.displayName || user.display_name || user.username || `User ${user.fid}`,
-    pfpUrl: user.pfpUrl || user.pfp_url || user.avatar || null,
-    bio: user.bio || '',
-    followerCount: user.followerCount || user.followers || 0,
-    followingCount: user.followingCount || user.following || 0,
-    verifiedAddresses: user.verifiedAddresses || { eth_addresses: [], sol_addresses: [] },
-    lastActiveTimestamp: user.lastActiveTimestamp || user.lastActive || null
-  };
 }

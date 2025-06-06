@@ -1,262 +1,133 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/ban-ts-comment, react-hooks/exhaustive-deps */
-//@ts-nocheck
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { useProfile } from '@farcaster/auth-kit';
+import { useCallback, useEffect } from 'react';
+import { useSession, signIn, signOut } from 'next-auth/react';
 import { useAuthStore } from '~/lib/stores/authStore';
-import sdk from "@farcaster/frame-sdk";
+import { useNavigation, useValidation } from './useCommon';
+import { z } from 'zod';
 
-// Declaring a global interface to avoid TypeScript errors
-declare global {
-    interface Window {
-        FrameSDK?: any;
-    }
-}
+const AuthHookSchema = z.object({
+    autoRefresh: z.boolean().default(true),
+    miniAppAutoAuth: z.boolean().default(true),
+});
 
-export function useAuth() {
-    const [isLoading, setIsLoading] = useState(true);
+type AuthHookProps = Partial<z.infer<typeof AuthHookSchema>>;
 
-    // Use the official AuthKit useProfile hook for web context
-    const { isAuthenticated: isAuthKitAuthenticated, profile } = useProfile();
+export const useAuth = (options: AuthHookProps = {}) => {
+    const { validateAndParse } = useValidation();
+    const { navigate } = useNavigation();
+    const { status } = useSession();
 
-    // Get unified auth state and actions from our store
+    const validatedOptions = validateAndParse(AuthHookSchema, options) ?? { autoRefresh: true, miniAppAutoAuth: true };
+
     const {
-        // State
+        isAuthenticated,
+        isLinked,
         farcaster,
         spotify,
-        isAuthenticated,
-        isMiniApp,
-        authMethod,
-        isLinked,
+        spotifyUser,
         fid,
         spotifyId,
-        userId,
         accessToken,
-
-        // Actions
-        setFarcasterUser,
-        setSpotifyUser,
-        setMiniAppStatus,
-        linkAccounts: linkAccountsStore,
+        linkAccounts,
         clearAuth,
+        refreshTokenIfNeeded,
         getDisplayName,
         getProfileImage,
-
-        // Music actions
-        fetchCurrentlyPlaying,
-        currentlyPlaying
     } = useAuthStore();
 
-    // Detect Mini App environment and initialize
+    // Create a computed user object from available data
+    const user = isAuthenticated ? {
+        fid,
+        spotifyId,
+        displayName: getDisplayName(),
+        profileImage: getProfileImage(),
+        farcaster,
+        spotify,
+        spotifyUser,
+    } : null;
+
+    // Auto-refresh tokens
     useEffect(() => {
-        async function initializeAuth() {
+        if (!validatedOptions.autoRefresh || !isAuthenticated || !accessToken) return;
+
+        const refreshInterval = setInterval(async () => {
             try {
-                // Check for Mini App environment
-                const inIframe = window !== window.parent;
-                const url = new URL(window.location.href);
-                const hasFrameParam = url.searchParams.has('fc-frame');
-                const isWarpcast = url.hostname.includes('warpcast.com');
-                const miniAppParam = url.searchParams.get('miniApp') === 'true' ||
-                    url.pathname.includes('/miniapp');
-
-                const isMiniAppEnv = inIframe || hasFrameParam || isWarpcast || miniAppParam;
-
-                // Update store with environment status
-                setMiniAppStatus(isMiniAppEnv);
-
-                console.log('Environment detected:', {
-                    isMiniApp: isMiniAppEnv,
-                    inIframe,
-                    hasFrameParam,
-                    isWarpcast,
-                    miniAppParam
-                });
-
-                // Initialize based on environment
-                if (isMiniAppEnv) {
-                    await initMiniAppAuth();
-                } else {
-                    await initWebAuth();
-                }
-
+                await refreshTokenIfNeeded();
             } catch (error) {
-                console.error('Error initializing auth:', error);
-            } finally {
-                setIsLoading(false);
+                console.error('Token refresh failed:', error);
             }
-        }
+        }, 5 * 60 * 1000); // 5 minutes
 
-        initializeAuth();
-    }, [setMiniAppStatus, setFarcasterUser, setSpotifyUser]);
+        return () => clearInterval(refreshInterval);
+    }, [validatedOptions.autoRefresh, isAuthenticated, accessToken, refreshTokenIfNeeded]);
 
-    // Initialize Mini App authentication
-    const initMiniAppAuth = async () => {
+    const login = useCallback(async (provider: 'spotify' | 'farcaster', options?: { redirect?: boolean }) => {
         try {
-            // Try to access Farcaster Frame SDK
-            if (typeof window !== 'undefined' && window.parent !== window) {
-                // We're in an iframe, try to get context from parent
-                const context = await sdk.context;
+            const shouldRedirect = options?.redirect ?? false;
 
-                if (context?.user) {
-                    console.log('Mini App context found:', context.user);
-
-                    // Set Farcaster user from context
-                    setFarcasterUser({
-                        fid: context.user.fid,
-                        username: context.user.username,
-                        displayName: context.user.displayName,
-                        pfpUrl: context.user.pfpUrl,
-                    });
-
-                    // Try to fetch linked Spotify account from our API
-                    if (context.user.fid) {
-                        await fetchUserData(context.user.fid);
-                    }
-                } else {
-                    console.log('No Mini App context available');
-                }
-            }
-        } catch (error) {
-            console.error('Error initializing Mini App auth:', error);
-        }
-    };
-
-    // Initialize Web authentication
-    const initWebAuth = async () => {
-        try {
-            // Check if we have persisted auth state
-            if (isAuthenticated && fid) {
-                // We have persisted auth, try to refresh user data
-                await fetchUserData(fid);
-            }
-
-            // Sync with AuthKit if available
-            if (isAuthKitAuthenticated && profile) {
-                console.log('AuthKit profile found:', profile);
-
-                setFarcasterUser({
-                    fid: profile.fid,
-                    username: profile.username,
-                    displayName: profile.displayName,
-                    pfpUrl: profile.pfpUrl,
+            if (shouldRedirect) {
+                // When redirect is true, signIn doesn't return a result
+                await signIn(provider, {
+                    redirect: true,
+                    callbackUrl: window.location.origin
+                });
+                return { success: true };
+            } else {
+                // When redirect is false, signIn returns a SignInResponse
+                const result = await signIn(provider, {
+                    redirect: false,
+                    callbackUrl: window.location.origin
                 });
 
-                // Fetch additional data from backend
-                await fetchUserData(profile.fid);
+                if (result?.error) {
+                    throw new Error(result.error);
+                }
+
+                return { success: true };
             }
         } catch (error) {
-            console.error('Error initializing web auth:', error);
+            console.error(`${provider} login failed:`, error);
+            return { success: false, error: error instanceof Error ? error.message : 'Login failed' };
         }
-    };
+    }, []);
 
-    // Fetch user data from API
-    const fetchUserData = async (userFid: number) => {
+    const logout = useCallback(async () => {
         try {
-            const response = await fetch(`/api/users/${userFid}`);
-            if (response.ok) {
-                const userData = await response.json();
-
-                if (userData.spotify) {
-                    setSpotifyUser(
-                        userData.spotify,
-                        userData.spotifyToken,
-                        userData.spotifyRefreshToken,
-                        userData.spotifyExpiresIn
-                    );
-                }
-
-                // Update userId if we got it from the API
-                if (userData.id && !userId) {
-                    // We need to update the userId in the store
-                    // This could be done through a separate action
-                    console.log('User ID from API:', userData.id);
-                }
-            }
+            clearAuth();
+            await signOut({ redirect: false });
+            navigate('/auth/signin', false);
+            return { success: true };
         } catch (error) {
-            console.error('Error fetching user data:', error);
+            console.error('Logout failed:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Logout failed' };
         }
-    };
+    }, [clearAuth, navigate]);
 
-    // Navigation helper that respects the environment
-    const navigate = useCallback((url: string, external: boolean = false) => {
-        if (isMiniApp) {
-            if (external && typeof sdk?.actions?.openUrl === 'function') {
-                // External links in mini app
-                sdk.actions.openUrl(url);
-            } else {
-                // Internal navigation in mini app - use same window
-                window.location.href = url;
-            }
-        } else {
-            if (external) {
-                // External links in web - open new tab
-                window.open(url, '_blank');
-            } else {
-                // Internal navigation in web
-                window.location.href = url;
-            }
+    const link = useCallback(async (fid: number, spotifyId: string) => {
+        try {
+            const result = await linkAccounts(fid, spotifyId);
+            return result;
+        } catch (error) {
+            console.error('Account linking failed:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Linking failed' };
         }
-    }, [isMiniApp]);
+    }, [linkAccounts]);
 
-    // Spotify login that respects environment
-    const loginWithSpotify = useCallback(() => {
-        if (isMiniApp) {
-            // In mini app, open Spotify auth in same window
-            const spotifyAuthUrl = `/api/auth/signin/spotify?source=miniapp&fid=${fid}`;
-            navigate(spotifyAuthUrl, false);
-        } else {
-            // In web, redirect normally
-            window.location.href = '/api/auth/signin/spotify';
-        }
-    }, [isMiniApp, fid, navigate]);
-
-    // Logout that works in all environments
-    const logout = useCallback(() => {
-        clearAuth();
-        if (!isMiniApp) {
-            // Only redirect in web environment
-            window.location.href = '/';
-        }
-    }, [clearAuth, isMiniApp]);
-
-    // Auto-fetch music data if authenticated
-    useEffect(() => {
-        if (isAuthenticated && spotifyId && accessToken && !currentlyPlaying) {
-            // Initial fetch of currently playing
-            fetchCurrentlyPlaying().catch(console.error);
-        }
-    }, [isAuthenticated, spotifyId, accessToken, currentlyPlaying, fetchCurrentlyPlaying]);
-
-    // Expose a consistent API regardless of environment
     return {
         // State
-        isLoading,
-        isMiniApp,
-        isAuthenticated: isAuthKitAuthenticated || isAuthenticated,
+        isAuthenticated,
         isLinked,
-        authMethod,
-
-        // User data
-        user: {
-            farcaster,
-            spotify,
-            fid,
-            spotifyId,
-            userId,
-            displayName: getDisplayName(),
-            profileImage: getProfileImage(),
-        },
+        user,
+        isLoading: status === 'loading',
 
         // Actions
-        loginWithSpotify,
-        logout: isMiniApp ? undefined : logout,
+        login,
+        logout,
+        link,
+        refreshToken: refreshTokenIfNeeded,
+
+        // Utilities
         navigate,
-
-        // For linking accounts - use the store function directly
-        linkAccounts: linkAccountsStore,
-
-        // Music data
-        currentlyPlaying,
     };
-}
+};

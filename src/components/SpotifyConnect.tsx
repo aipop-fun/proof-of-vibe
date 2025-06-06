@@ -13,8 +13,8 @@ export function SpotifyConnect({ onBack }: { onBack: () => void }) {
     const [isLoading, setIsLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-    // Generate Spotify auth URL
-    const spotifyAuthUrl = `${process.env.NEXT_PUBLIC_URL || window.location.origin}/api/auth/signin/spotify?source=${isMiniApp ? 'miniapp' : 'web'}&fid=${user.fid || ''}`;
+    // Generate Spotify auth URL with null safety
+    const spotifyAuthUrl = `${process.env.NEXT_PUBLIC_URL || window.location.origin}/api/auth/signin/spotify?source=${isMiniApp ? 'miniapp' : 'web'}&fid=${user?.fid || ''}`;
 
     const handleConnectSpotify = () => {
         setIsLoading(true);

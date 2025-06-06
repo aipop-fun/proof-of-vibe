@@ -1,6 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { auth } from "~/auth";
 import { supabase } from "~/lib/supabase";
+
+// Zod schemas for type validation
+const UserSchema = z.object({
+    fid: z.number(),
+    username: z.string(),
+    displayName: z.string(),
+    pfp: z.string().url().optional(),
+});
+
+const FollowersResponseSchema = z.object({
+    users: z.array(UserSchema).optional(),
+});
+
+const SessionUserSchema = z.object({
+    fid: z.number(),
+});
+
+const SpotifyStatusSchema = z.record(z.number(), z.boolean());
+
+const ListeningHistorySchema = z.object({
+    fid: z.number(),
+    spotify_track_id: z.string(),
+    track_title: z.string(),
+    track_artist: z.string(),
+    track_album: z.string(),
+    track_cover_art: z.string().url().optional(),
+    is_playing: z.boolean(),
+    track_duration_ms: z.number().optional(),
+    listened_at: z.string(),
+    user_profiles: z.object({
+        fid: z.number(),
+        username: z.string(),
+        display_name: z.string(),
+        profile_image: z.string().url().optional(),
+    }).optional(),
+});
+
+type User = z.infer<typeof UserSchema>;
+type SpotifyStatus = z.infer<typeof SpotifyStatusSchema>;
+type ListeningHistory = z.infer<typeof ListeningHistorySchema>;
 
 export async function GET(request: NextRequest) {
     try {
@@ -12,11 +53,12 @@ export async function GET(request: NextRequest) {
         const { searchParams } = new URL(request.url);
         const limit = parseInt(searchParams.get('limit') || '20');
 
-        // Get current user's FID
-        const userFid = (session.user as any).fid;
-        if (!userFid) {
+        // Validate and get current user's FID
+        const sessionUserResult = SessionUserSchema.safeParse(session.user);
+        if (!sessionUserResult.success) {
             return NextResponse.json({ error: 'User FID not found' }, { status: 400 });
         }
+        const userFid = sessionUserResult.data.fid;
 
         // Fetch followers with Spotify connections
         const followersResponse = await fetch(`${process.env.NEXT_PUBLIC_URL}/api/neynar/followers?fid=${userFid}&limit=100`);
@@ -24,8 +66,16 @@ export async function GET(request: NextRequest) {
             throw new Error('Failed to fetch followers');
         }
 
-        const followersData = await followersResponse.json();
-        const followerFids = followersData.users?.map((user: any) => user.fid) || [];
+        const followersRawData = await followersResponse.json();
+        const followersValidation = FollowersResponseSchema.safeParse(followersRawData);
+
+        if (!followersValidation.success) {
+            console.error('Invalid followers data:', followersValidation.error);
+            return NextResponse.json({ items: [], total: 0 });
+        }
+
+        const followersData = followersValidation.data;
+        const followerFids = followersData.users?.map((user) => user.fid) || [];
 
         if (followerFids.length === 0) {
             return NextResponse.json({ items: [], total: 0 });
@@ -38,9 +88,14 @@ export async function GET(request: NextRequest) {
             body: JSON.stringify({ fids: followerFids })
         });
 
-        const spotifyStatus = spotifyStatusResponse.ok
-            ? await spotifyStatusResponse.json()
-            : {};
+        let spotifyStatus: SpotifyStatus = {};
+        if (spotifyStatusResponse.ok) {
+            const rawSpotifyStatus = await spotifyStatusResponse.json();
+            const spotifyStatusValidation = SpotifyStatusSchema.safeParse(rawSpotifyStatus);
+            if (spotifyStatusValidation.success) {
+                spotifyStatus = spotifyStatusValidation.data;
+            }
+        }
 
         // Filter only followers with Spotify
         const spotifyFollowerFids = followerFids.filter((fid: number) => spotifyStatus[fid]);
@@ -69,15 +124,26 @@ export async function GET(request: NextRequest) {
         if (dbError) {
             console.error('Database error:', dbError);
             // Fallback to mock data if database fails
-            return generateMockFeedData(spotifyFollowerFids, followersData.users, limit);
+            return generateMockFeedData(spotifyFollowerFids, followersData.users || [], limit);
         }
 
-        // Process and deduplicate by user (latest track per user)
-        const userLatestMap = new Map();
+        // Validate listening data
+        const validatedListeningData: ListeningHistory[] = [];
         listeningData?.forEach(entry => {
+            const validation = ListeningHistorySchema.safeParse(entry);
+            if (validation.success) {
+                validatedListeningData.push(validation.data);
+            } else {
+                console.warn('Invalid listening data entry:', validation.error);
+            }
+        });
+
+        // Process and deduplicate by user (latest track per user)
+        const userLatestMap = new Map<number, ListeningHistory>();
+        validatedListeningData.forEach(entry => {
             const fid = entry.fid;
             if (!userLatestMap.has(fid) ||
-                new Date(entry.listened_at) > new Date(userLatestMap.get(fid).listened_at)) {
+                new Date(entry.listened_at) > new Date(userLatestMap.get(fid)!.listened_at)) {
                 userLatestMap.set(fid, entry);
             }
         });
@@ -86,12 +152,12 @@ export async function GET(request: NextRequest) {
         const feedItems = Array.from(userLatestMap.values())
             .slice(0, limit)
             .map(entry => {
-                const user = followersData.users.find((u: any) => u.fid === entry.fid);
+                const user = followersData.users?.find((u) => u.fid === entry.fid);
                 return {
                     user: {
                         fid: entry.fid,
-                        username: entry.user_profiles?.username || user?.username,
-                        displayName: entry.user_profiles?.display_name || user?.displayName,
+                        username: entry.user_profiles?.username || user?.username || `user${entry.fid}`,
+                        displayName: entry.user_profiles?.display_name || user?.displayName || `User ${entry.fid}`,
                         pfpUrl: entry.user_profiles?.profile_image || user?.pfp
                     },
                     track: {
@@ -131,7 +197,7 @@ function formatDuration(ms: number): string {
 }
 
 // Fallback mock data generator
-function generateMockFeedData(fids: number[], users: any[], limit: number) {
+function generateMockFeedData(fids: number[], users: User[], limit: number) {
     const mockTracks = [
         { title: "Blinding Lights", artist: "The Weeknd", album: "After Hours" },
         { title: "Levitating", artist: "Dua Lipa", album: "Future Nostalgia" },
@@ -141,7 +207,7 @@ function generateMockFeedData(fids: number[], users: any[], limit: number) {
     ];
 
     const items = fids.slice(0, limit).map((fid, index) => {
-        const user = users.find((u: any) => u.fid === fid);
+        const user = users.find((u) => u.fid === fid);
         const track = mockTracks[index % mockTracks.length];
 
         return {
@@ -166,142 +232,4 @@ function generateMockFeedData(fids: number[], users: any[], limit: number) {
     });
 
     return NextResponse.json({ items, total: items.length });
-}
-
----
-
-// src/app/api/social/user-tracks/route.ts
-import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "~/lib/supabase";
-
-export async function GET(request: NextRequest) {
-    try {
-        const { searchParams } = new URL(request.url);
-        const fidParam = searchParams.get('fid');
-
-        if (!fidParam) {
-            return NextResponse.json({ error: 'FID is required' }, { status: 400 });
-        }
-
-        const fid = parseInt(fidParam);
-        if (isNaN(fid)) {
-            return NextResponse.json({ error: 'Invalid FID' }, { status: 400 });
-        }
-
-        // Check if user has Spotify connected
-        const { data: user, error: userError } = await supabase
-            .from('user_profiles')
-            .select('spotify_id')
-            .eq('fid', fid)
-            .single();
-
-        if (userError || !user?.spotify_id) {
-            return NextResponse.json({
-                error: 'User not found or Spotify not connected',
-                hasSpotify: false
-            }, { status: 404 });
-        }
-
-        // Get user's listening history for different time ranges
-        const now = new Date();
-        const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        const threeMonthsAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-
-        // Fetch listening data for different time ranges
-        const [weeklyData, monthlyData, allTimeData, recentData] = await Promise.all([
-            // Last week (short_term)
-            supabase
-                .from('listening_history')
-                .select('spotify_track_id, track_title, track_artist, track_album, track_cover_art, track_popularity')
-                .eq('fid', fid)
-                .gte('listened_at', oneWeekAgo.toISOString())
-                .order('listened_at', { ascending: false }),
-
-            // Last month (medium_term)
-            supabase
-                .from('listening_history')
-                .select('spotify_track_id, track_title, track_artist, track_album, track_cover_art, track_popularity')
-                .eq('fid', fid)
-                .gte('listened_at', oneMonthAgo.toISOString())
-                .order('listened_at', { ascending: false }),
-
-            // All time (long_term) - last 3 months
-            supabase
-                .from('listening_history')
-                .select('spotify_track_id, track_title, track_artist, track_album, track_cover_art, track_popularity')
-                .eq('fid', fid)
-                .gte('listened_at', threeMonthsAgo.toISOString())
-                .order('listened_at', { ascending: false }),
-
-            // Recent tracks (last 24 hours)
-            supabase
-                .from('listening_history')
-                .select('*')
-                .eq('fid', fid)
-                .gte('listened_at', new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString())
-                .order('listened_at', { ascending: false })
-                .limit(10)
-        ]);
-
-        // Process top tracks for each time range
-        const processTopTracks = (data: any[]) => {
-            if (!data) return [];
-
-            // Count track plays and get most recent data
-            const trackCounts = new Map();
-
-            data.forEach(entry => {
-                const trackId = entry.spotify_track_id;
-                if (!trackCounts.has(trackId)) {
-                    trackCounts.set(trackId, {
-                        count: 0,
-                        track: {
-                            id: trackId,
-                            title: entry.track_title,
-                            artist: entry.track_artist,
-                            album: entry.track_album,
-                            coverArt: entry.track_cover_art,
-                            popularity: entry.track_popularity
-                        }
-                    });
-                }
-                trackCounts.get(trackId).count++;
-            });
-
-            // Sort by play count and return top 5
-            return Array.from(trackCounts.values())
-                .sort((a, b) => b.count - a.count)
-                .slice(0, 5)
-                .map(item => item.track);
-        };
-
-        // Process recent tracks
-        const recentTracks = recentData.data?.map(entry => ({
-            id: entry.spotify_track_id,
-            title: entry.track_title,
-            artist: entry.track_artist,
-            album: entry.track_album,
-            coverArt: entry.track_cover_art,
-            timestamp: new Date(entry.listened_at).getTime(),
-            isPlaying: entry.is_playing
-        })) || [];
-
-        return NextResponse.json({
-            hasSpotify: true,
-            topTracks: {
-                short_term: processTopTracks(weeklyData.data || []),
-                medium_term: processTopTracks(monthlyData.data || []),
-                long_term: processTopTracks(allTimeData.data || [])
-            },
-            recentTracks
-        });
-
-    } catch (error) {
-        console.error('Error fetching user tracks:', error);
-        return NextResponse.json(
-            { error: 'Failed to fetch user tracks' },
-            { status: 500 }
-        );
-    }
 }

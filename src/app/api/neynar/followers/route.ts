@@ -5,63 +5,72 @@ import { getNeynarClient } from "~/lib/neynar";
 
 export async function GET(request: NextRequest) {
   try {
-    // Extract query parameters
-    const searchParams = request.nextUrl.searchParams;
-    const fidParam = searchParams.get("fid");
-    const limit = parseInt(searchParams.get("limit") || "50", 10);
-    const cursor = searchParams.get("cursor") || undefined;
+    const { searchParams } = new URL(request.url);
+    const fidParam = searchParams.get('fid');
+    const limit = parseInt(searchParams.get('limit') || '50');
+    const cursor = searchParams.get('cursor') || '';
 
     if (!fidParam) {
       return NextResponse.json(
-        { error: "FID parameter is required" },
+        { error: 'FID parameter is required' },
         { status: 400 }
       );
     }
 
-    const fid = parseInt(fidParam, 10);
+    const fid = parseInt(fidParam);
     if (isNaN(fid)) {
       return NextResponse.json(
-        { error: "Invalid FID parameter" },
+        { error: 'Invalid FID parameter' },
         { status: 400 }
       );
     }
 
-    // Get Neynar client
+    console.log('Fetching followers for FID:', fid);
+
     const client = getNeynarClient();
 
-    // Fetch followers using Neynar SDK
-    const result = await client.fetchUserFollowers({
+    const response = await client.fetchUserFollowers({
       fid,
-      limit,
-      cursor
+      limit: Math.min(limit, 150), // Limite máximo do Neynar
+      cursor: cursor || undefined
     });
 
-    // The actual structure is different - each item in the 'users' array has a 'user' property
-    // that contains the actual user data
-    const transformedUsers = result.users.map(item => {
-      const user = item.user;
-      return {
-        fid: user.fid,
-        username: user.username || `user${user.fid}`,
-        displayName: user.display_name || user.username || `User ${user.fid}`,
-        pfp: user.pfp_url || null,
-        followerCount: user.follower_count,
-        followingCount: user.following_count,
-        lastActive: user.last_active_ts ? new Date(user.last_active_ts).getTime() : undefined,
-        isFollower: true
-      };
+    console.log('Followers response:', {
+      userCount: response.result?.users?.length || 0,
+      fid
     });
+
+    if (!response.result?.users) {
+      return NextResponse.json({
+        users: [],
+        total: 0,
+        nextCursor: null
+      });
+    }
+
+    // Normalizar usuários
+    const users = response.result.users.map(normalizeNeynarUser);
 
     return NextResponse.json({
-      users: transformedUsers,
-      nextCursor: result.next?.cursor || null,
-      total: transformedUsers.length
+      users,
+      total: response.result.count || users.length,
+      nextCursor: response.result.next?.cursor || null
     });
 
   } catch (error) {
-    console.error("Error fetching followers:", error);
+    console.error('Followers API error:', error);
+
+    const { state, error: errorMessage } = handleNeynarError(error);
+
+    if (state === 'rate_limit') {
+      return NextResponse.json(
+        { error: 'Rate limited. Please try again later.' },
+        { status: 429 }
+      );
+    }
+
     return NextResponse.json(
-      { error: "Failed to fetch followers" },
+      { error: errorMessage || 'Failed to fetch followers' },
       { status: 500 }
     );
   }

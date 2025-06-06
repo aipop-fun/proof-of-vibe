@@ -26,6 +26,7 @@
     "@farcaster/frame-node": "^0.0.29",
     "@farcaster/frame-sdk": "^0.0.37",
     "@farcaster/frame-wagmi-connector": "^0.0.37",
+    "@hookform/resolvers": "^5.0.1",
     "@neynar/nodejs-sdk": "^2.43.2",
     "@neynar/react": "^0.9.7",
     "@radix-ui/react-label": "^2.1.7",
@@ -45,12 +46,13 @@
     "next-auth": "5.0.0-beta.28",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-hook-form": "^7.57.0",
     "react-qr-code": "^2.0.15",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "viem": "^2.30.0",
     "wagmi": "^2.15.4",
-    "zod": "^3.25.17",
+    "zod": "^3.25.49",
     "zustand": "^5.0.5"
   },
   "devDependencies": {
