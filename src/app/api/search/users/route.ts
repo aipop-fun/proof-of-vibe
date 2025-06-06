@@ -1,4 +1,4 @@
-// src/app/api/search/users/route.ts
+/* eslint-disable @typescript-eslint/no-explicit-any,  @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars */
 
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
@@ -10,7 +10,6 @@ async function searchNeynarUsersDirectly(query: string, limit: number) {
     const NEYNAR_API_KEY = process.env.NEYNAR_API_KEY;
     if (!NEYNAR_API_KEY) throw new Error('NEYNAR_API_KEY não está configurada no servidor.');
 
-    // CORREÇÃO: A API da Neynar para pesquisa de utilizadores tem um limite de 10.
     const effectiveLimit = Math.min(limit, 10);
     const url = `https://api.neynar.com/v2/farcaster/user/search?q=${encodeURIComponent(query)}&limit=${effectiveLimit}`;
 

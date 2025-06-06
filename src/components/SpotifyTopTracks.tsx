@@ -15,98 +15,69 @@ export function SpotifyTopTracks() {
     const [error, setError] = useState<string | null>(null);
     const { isMiniApp } = useFrame();
 
-    // Access Zustand state
     const {
         topTracks,
         isLoadingTracks,
         fetchTopTracks,
         isAuthenticated,
         spotifyId,
-        isExpired,
         accessToken,
         refreshTokenIfNeeded
     } = useAuthStore();
 
-    // Friendly labels for time periods
     const timeRangeLabels: Record<TimeRange, string> = {
-        short_term: 'Last 4 Weeks',
-        medium_term: 'Last 6 Months',
-        long_term: 'All Time'
+        short_term: 'Últimas 4 Semanas',
+        medium_term: 'Últimos 6 Meses',
+        long_term: 'Todo o Tempo'
     };
 
-    // Fetch top tracks data when component mounts or dependencies change
-    const loadTopTracksData = useCallback(async (timeRange: TimeRange) => {
+    
+    const loadTopTracksData = useCallback(async (timeRange: TimeRange, forceRefresh = false) => {
+        setError(null);
         try {
-            // Check if token is valid and refresh if needed
-            const tokenValid = await refreshTokenIfNeeded();
+            const tokenValid = await refreshTokenIfNeeded();    
+            const shouldFetch = forceRefresh || (topTracks[timeRange].length === 0 && !isLoadingTracks[timeRange]);
 
-            // Only fetch if: token is valid AND we have an access token AND 
-            // either no tracks exist AND we're not currently loading
-            if (tokenValid && accessToken &&
-                topTracks[timeRange].length === 0 &&
-                !isLoadingTracks[timeRange]) {
-
-                console.log(`Loading top tracks for ${timeRange}...`);
+            if (tokenValid && accessToken && shouldFetch) {
+                console.log(`A carregar faixas principais para ${timeRange} (Forçado: ${forceRefresh})...`);
                 await fetchTopTracks(timeRange);
             }
         } catch (err) {
-            console.error(`Error loading top tracks (${timeRange}):`, err);
-            setError(err instanceof Error ? err.message : "Failed to load top tracks");
+            console.error(`Erro ao carregar faixas principais (${timeRange}):`, err);
+            setError(err instanceof Error ? err.message : "Falha ao carregar as faixas principais");
         }
     }, [accessToken, fetchTopTracks, isLoadingTracks, refreshTokenIfNeeded, topTracks]);
 
-        
     useEffect(() => {
         if (isAuthenticated && spotifyId) {
             loadTopTracksData(selectedTimeRange);
         }
     }, [isAuthenticated, loadTopTracksData, selectedTimeRange, spotifyId]);
 
-    
     const handleTimeRangeChange = (timeRange: TimeRange) => {
         setSelectedTimeRange(timeRange);
-
-        if (isAuthenticated &&
-            topTracks[timeRange].length === 0 &&
-            !isLoadingTracks[timeRange]) {
-            loadTopTracksData(timeRange);
-        }
+        loadTopTracksData(timeRange);
     };
 
-    // Toggle expanded view
     const toggleExpanded = () => {
         setIsExpanded(!isExpanded);
     };
-
-    // Handler for refreshing data
+    
     const handleRefresh = async () => {
-        if (isLoadingTracks[selectedTimeRange]) return;
-
-        setError(null);
-        await loadTopTracksData(selectedTimeRange);
+        if (isLoadingTracks[selectedTimeRange]) return;        
+        await loadTopTracksData(selectedTimeRange, true);
     };
 
-    // Handler for sharing top tracks
     const handleShareTopTracks = () => {
         if (topTracks[selectedTimeRange].length === 0) return;
-
-        // Create the share URL
         const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
         const shareUrl = `${baseUrl}/results?type=top-tracks&timeRange=${selectedTimeRange}`;
-
-        // Share message based on time range
         const timeRangeText = timeRangeLabels[selectedTimeRange];
-        const shareMessage = `🎵 Check out my top tracks from ${timeRangeText} on Timbra!`;
+        const shareMessage = `🎵 Vê as minhas faixas favoritas de "${timeRangeText}" no Timbra!`;
 
-        // Determine the appropriate sharing method based on context
         if (isMiniApp && typeof sdk?.actions?.composeCast === 'function') {
-            // When in Farcaster mini app, use composeCast
-            sdk.actions.composeCast({
-                text: shareMessage,
-                embeds: [shareUrl]
-            });
+            sdk.actions.composeCast({ text: shareMessage, embeds: [shareUrl] });
         } else {
-            // On web, open in a new tab
             window.open(shareUrl, '_blank');
         }
     };
@@ -116,32 +87,31 @@ export function SpotifyTopTracks() {
     return (
         <div className="mt-3">
             <div className="flex justify-between items-center mb-3">
-                <h3 className="text-sm font-medium">Your Top Tracks</h3>
+                <h3 className="text-sm font-medium">As Suas Faixas Favoritas</h3>
                 <div className="flex space-x-2">
                     <button
                         onClick={handleShareTopTracks}
                         className="text-xs text-purple-400 hover:text-purple-300"
                         disabled={isLoadingTracks[selectedTimeRange] || tracksToShow.length === 0}
                     >
-                        Share
+                        Partilhar
                     </button>
                     <button
                         onClick={handleRefresh}
                         className="text-xs text-purple-400 hover:text-purple-300"
                         disabled={isLoadingTracks[selectedTimeRange]}
                     >
-                        {isLoadingTracks[selectedTimeRange] ? 'Loading...' : 'Refresh'}
+                        {isLoadingTracks[selectedTimeRange] ? 'A carregar...' : 'Atualizar'}
                     </button>
                     <button
                         onClick={toggleExpanded}
                         className="text-xs text-purple-400 hover:text-purple-300"
                     >
-                        {isExpanded ? 'Show Less' : 'Show More'}
+                        {isExpanded ? 'Mostrar Menos' : 'Mostrar Mais'}
                     </button>
                 </div>
             </div>
 
-            {/* Time period selector */}
             <div className="flex space-x-2 mb-3 text-xs">
                 {Object.entries(timeRangeLabels).map(([range, label]) => (
                     <button
@@ -158,27 +128,24 @@ export function SpotifyTopTracks() {
                 ))}
             </div>
 
-            {/* Error display */}
             {error && (
                 <div className="mb-3 p-2 text-sm bg-red-900/30 text-red-200 rounded-md">
                     {error}
                 </div>
             )}
 
-            {/* Loading state */}
             {isLoadingTracks[selectedTimeRange] ? (
                 <TrackListSkeleton count={4} />
             ) : (
-                /* Track list */
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
                     {tracksToShow.length === 0 ? (
                         <div className="text-center text-gray-400 p-4">
-                            <p>No tracks found for this period</p>
+                            <p>Nenhuma faixa encontrada para este período</p>
                             <button
                                 onClick={handleRefresh}
                                 className="mt-2 text-sm text-purple-400 hover:text-purple-300"
                             >
-                                Try again
+                                Tentar novamente
                             </button>
                         </div>
                     ) : (

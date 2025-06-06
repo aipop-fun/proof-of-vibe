@@ -1,10 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any,  @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '~/lib/supabase';
 import { z } from 'zod';
 import { getNeynarClient, normalizeNeynarUser } from '~/lib/neynar';
 
-// A função de pesquisa direta que imita o endpoint de depuração funcional
 async function searchNeynarUsersDirectly(query: string, limit: number) {
   const NEYNAR_API_KEY = process.env.NEYNAR_API_KEY;
   if (!NEYNAR_API_KEY) {
@@ -73,8 +73,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    if (users.length === 0) {
-      // CORREÇÃO: Usar a chamada fetch direta em vez do client.searchUser()
+    if (users.length === 0) {      
       const searchResponse = await searchNeynarUsersDirectly(query, Math.min(limit, 50));
       users = searchResponse.result?.users?.map(normalizeNeynarUser) || [];
     }
@@ -104,9 +103,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('Erro na API de pesquisa de utilizadores:', error);
-
-    // CORREÇÃO: Gestão de erros robusta que evita o crash de 'instanceof'
+    console.error('Erro na API de pesquisa de utilizadores:', error);    
     const status = error?.response?.status || 500;
     let errorMessage = 'Falha ao procurar utilizadores';
 

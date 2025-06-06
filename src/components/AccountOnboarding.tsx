@@ -60,8 +60,7 @@ export function AccountOnboarding() {
         setIsLinking(true);
         setError(null);
 
-        try {
-            // Use the correct linkAccounts signature: (fid: number, spotifyId: string)
+        try {            
             const result = await linkAccounts(user.fid, user.spotifyId);
 
             if (result.success) {
