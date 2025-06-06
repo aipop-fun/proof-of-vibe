@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
     const client = getNeynarClient();
 
-    // Primeiro tentar busca por FID se o query for numérico
+    // First try search by FID if the query is numeric
     const isFidQuery = /^\d+$/.test(query.trim());
 
     if (isFidQuery) {
@@ -39,16 +39,16 @@ export async function GET(request: NextRequest) {
         }
       } catch (fidError) {
         console.log('FID search failed, trying username search:', fidError);
-        // Continue para busca por username
+        // Continue to username search
       }
     }
 
-    // Busca por username/display name
+    // Search by username/display name
     console.log('Searching by username/display name:', query);
 
     const searchResponse = await client.searchUser({
       q: query,
-      limit: Math.min(limit, 50) // Neynar tem limite máximo
+      limit: Math.min(limit, 50) // Neynar has max limit
     });
 
     console.log('Neynar search response:', {
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Normalizar usuários
+    // Normalize users
     const users = searchResponse.result.users.map(normalizeNeynarUser);
 
     return NextResponse.json({

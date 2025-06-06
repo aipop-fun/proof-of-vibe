@@ -23,17 +23,27 @@ export function getNeynarClient(): NeynarAPIClient {
  * Common error handler for Neynar API requests
  */
 export const handleNeynarError = (error: unknown): { state: string; error: string } => {
-  // Check if this is a rate limit error
-  if (error instanceof Error && error.message.includes("rate limit")) {
+  // Safe error checking without instanceof
+  if (error && typeof error === 'object' && 'message' in error) {
+    const errorMessage = (error as { message: string }).message;
+
+    // Check if this is a rate limit error
+    if (errorMessage.includes("rate limit") || errorMessage.includes("429")) {
+      return {
+        state: "rate_limit",
+        error: "Rate limited by Neynar API"
+      };
+    }
+
     return {
-      state: "rate_limit",
-      error: "Rate limited by Neynar API"
+      state: "error",
+      error: errorMessage
     };
   }
 
   return {
     state: "error",
-    error: error instanceof Error ? error.message : "Unknown error"
+    error: typeof error === 'string' ? error : "Unknown error"
   };
 };
 
@@ -41,7 +51,7 @@ export const handleNeynarError = (error: unknown): { state: string; error: strin
  * Make a Neynar API request with proper error handling
  */
 export const fetchNeynarApi = async (
-  endpoint: string, 
+  endpoint: string,
   options: RequestInit = {},
   revalidate: number = 300
 ): Promise<any> => {
@@ -51,7 +61,7 @@ export const fetchNeynarApi = async (
     }
 
     const url = `${BASE_URL}${endpoint}`;
-    
+
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -97,7 +107,7 @@ export const searchUsers = async (query: string): Promise<any[]> => {
   try {
     // Check if query is a FID (numeric)
     const isFid = /^\d+$/.test(query.trim());
-    
+
     if (isFid) {
       // Direct FID lookup
       const fid = parseInt(query.trim());
@@ -109,14 +119,20 @@ export const searchUsers = async (query: string): Promise<any[]> => {
     const data = await fetchNeynarApi(
       `/farcaster/user/search?q=${encodeURIComponent(query)}&limit=20`
     );
-    
+
     // Normalize the search results
     return (data.result?.users || []).map(normalizeNeynarUser);
   } catch (error) {
     console.error('Error searching users:', error);
-    if (error instanceof Error && error.message.includes('404')) {
-      return [];
+
+    // Safe error checking
+    if (error && typeof error === 'object' && 'message' in error) {
+      const errorMessage = (error as { message: string }).message;
+      if (errorMessage.includes('404')) {
+        return [];
+      }
     }
+
     throw error;
   }
 };
@@ -148,7 +164,7 @@ export async function sendNeynarFrameNotification({
       body
     });
 
-    return response && response.success 
+    return response && response.success
       ? { state: "success" }
       : { state: "error", error: "Failed to send notification" };
   } catch (error) {
