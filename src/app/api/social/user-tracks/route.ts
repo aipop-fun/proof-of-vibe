@@ -1,48 +1,6 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { supabase } from "~/lib/supabase";
-
-// Zod schemas for type validation
-const UserProfileSchema = z.object({
-    spotify_id: z.string().nullable(),
-});
-
-const ListeningHistorySchema = z.object({
-    spotify_track_id: z.string(),
-    track_title: z.string(),
-    track_artist: z.string(),
-    track_album: z.string(),
-    track_cover_art: z.string().url().optional(),
-    track_popularity: z.number().optional(),
-    listened_at: z.string(),
-    is_playing: z.boolean().optional(),
-});
-
-const TrackSchema = z.object({
-    id: z.string(),
-    title: z.string(),
-    artist: z.string(),
-    album: z.string(),
-    coverArt: z.string().url().optional(),
-    popularity: z.number().optional(),
-});
-
-const RecentTrackSchema = TrackSchema.extend({
-    timestamp: z.number(),
-    isPlaying: z.boolean(),
-});
-
-// TypeScript types from Zod schemas
-type UserProfile = z.infer<typeof UserProfileSchema>;
-type ListeningHistory = z.infer<typeof ListeningHistorySchema>;
-type Track = z.infer<typeof TrackSchema>;
-type RecentTrack = z.infer<typeof RecentTrackSchema>;
-
-interface TrackCount {
-    count: number;
-    track: Track;
-}
+//import { auth } from "~/auth";
 
 export async function GET(request: NextRequest) {
     try {
@@ -58,155 +16,148 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid FID' }, { status: 400 });
         }
 
-        // Check if user has Spotify connected
-        const { data: user, error: userError } = await supabase
+        // Get session to check if this is the current user
+       // const session = await auth();
+
+        // Look up user in database
+        const { data: userProfile, error: userError } = await supabase
             .from('user_profiles')
-            .select('spotify_id')
+            .select('*')
             .eq('fid', fid)
             .single();
 
-        if (userError) {
+        if (userError || !userProfile) {
             return NextResponse.json({
-                error: 'User not found or Spotify not connected',
+                error: 'User not found',
                 hasSpotify: false
             }, { status: 404 });
         }
 
-        // Validate user profile data
-        const userValidation = UserProfileSchema.safeParse(user);
-        if (!userValidation.success || !userValidation.data.spotify_id) {
+        // Check if user has Spotify connected
+        if (!userProfile.spotify_id) {
             return NextResponse.json({
-                error: 'User not found or Spotify not connected',
+                error: 'User does not have Spotify connected',
                 hasSpotify: false
-            }, { status: 404 });
+            }, { status: 200 });
         }
 
-        // Get user's listening history for different time ranges
-        const now = new Date();
-        const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        const threeMonthsAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        // Try to get current activity from various sources
+        let currentTrack = null;
+        let timestamp = Date.now();
 
-        // Fetch listening data for different time ranges
-        const [weeklyData, monthlyData, allTimeData, recentData] = await Promise.all([
-            // Last week (short_term)
-            supabase
-                .from('listening_history')
-                .select('spotify_track_id, track_title, track_artist, track_album, track_cover_art, track_popularity')
-                .eq('fid', fid)
-                .gte('listened_at', oneWeekAgo.toISOString())
-                .order('listened_at', { ascending: false }),
+        // Method 1: Check for real-time Spotify data (if available and recent)
+        const { data: realtimeData, error: realtimeError } = await supabase
+            .from('user_current_tracks')
+            .select('*')
+            .eq('fid', fid)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .single();
 
-            // Last month (medium_term)
-            supabase
-                .from('listening_history')
-                .select('spotify_track_id, track_title, track_artist, track_album, track_cover_art, track_popularity')
-                .eq('fid', fid)
-                .gte('listened_at', oneMonthAgo.toISOString())
-                .order('listened_at', { ascending: false }),
+        if (!realtimeError && realtimeData) {
+            // Check if data is recent (less than 5 minutes old)
+            const dataAge = Date.now() - new Date(realtimeData.updated_at).getTime();
+            if (dataAge < 5 * 60 * 1000) { // 5 minutes
+                currentTrack = {
+                    id: realtimeData.track_id,
+                    title: realtimeData.track_name,
+                    artist: realtimeData.artist_name,
+                    album: realtimeData.album_name,
+                    coverArt: realtimeData.album_image_url,
+                    isPlaying: realtimeData.is_playing,
+                    uri: realtimeData.spotify_uri
+                };
+                timestamp = new Date(realtimeData.updated_at).getTime();
+            }
+        }
 
-            // All time (long_term) - last 3 months
-            supabase
-                .from('listening_history')
-                .select('spotify_track_id, track_title, track_artist, track_album, track_cover_art, track_popularity')
-                .eq('fid', fid)
-                .gte('listened_at', threeMonthsAgo.toISOString())
-                .order('listened_at', { ascending: false }),
-
-            // Recent tracks (last 24 hours)
-            supabase
+        // Method 2: Fallback to recent listening history
+        if (!currentTrack) {
+            const { data: historyData, error: historyError } = await supabase
                 .from('listening_history')
                 .select('*')
                 .eq('fid', fid)
-                .gte('listened_at', new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString())
                 .order('listened_at', { ascending: false })
-                .limit(10)
-        ]);
+                .limit(1)
+                .single();
 
-        // Process top tracks for each time range
-        const processTopTracks = (data: unknown[]): Track[] => {
-            if (!data || !Array.isArray(data)) return [];
+            if (!historyError && historyData) {
+                currentTrack = {
+                    id: historyData.spotify_track_id,
+                    title: historyData.track_title,
+                    artist: historyData.track_artist,
+                    album: historyData.track_album,
+                    coverArt: historyData.track_cover_art,
+                    isPlaying: false,
+                    uri: `spotify:track:${historyData.spotify_track_id}`
+                };
+                timestamp = new Date(historyData.listened_at).getTime();
+            }
+        }
 
-            // Validate and filter the data
-            const validatedData: ListeningHistory[] = [];
-            data.forEach(entry => {
-                const validation = ListeningHistorySchema.safeParse(entry);
-                if (validation.success) {
-                    validatedData.push(validation.data);
-                } else {
-                    console.warn('Invalid listening history entry:', validation.error);
+        // Method 3: Generate demo data for development/testing
+        if (!currentTrack && process.env.NODE_ENV === 'development') {
+            // Generate deterministic demo data based on FID
+            const demoTracks = [
+                {
+                    id: 'demo1',
+                    title: 'Blinding Lights',
+                    artist: 'The Weeknd',
+                    album: 'After Hours',
+                    coverArt: '/api/placeholder/300/300',
+                    isPlaying: Math.random() > 0.5,
+                    uri: 'spotify:track:0VjIjW4GlUla7X8inOCbID'
+                },
+                {
+                    id: 'demo2',
+                    title: 'Levitating',
+                    artist: 'Dua Lipa',
+                    album: 'Future Nostalgia',
+                    coverArt: '/api/placeholder/300/300',
+                    isPlaying: Math.random() > 0.5,
+                    uri: 'spotify:track:463CkQjx2Zk1yXoBuierM9'
+                },
+                {
+                    id: 'demo3',
+                    title: 'Good 4 U',
+                    artist: 'Olivia Rodrigo',
+                    album: 'SOUR',
+                    coverArt: '/api/placeholder/300/300',
+                    isPlaying: Math.random() > 0.5,
+                    uri: 'spotify:track:4ZtFanR9U6ndgddUvNcjcG'
                 }
+            ];
+
+            const selectedTrack = demoTracks[fid % demoTracks.length];
+            currentTrack = selectedTrack;
+            timestamp = Date.now() - Math.floor(Math.random() * 3600000); // Random time within last hour
+        }
+
+        if (currentTrack) {
+            return NextResponse.json({
+                id: `${fid}-${timestamp}`,
+                fid: fid,
+                username: userProfile.username,
+                displayName: userProfile.display_name,
+                spotifyId: userProfile.spotify_id,
+                timestamp: timestamp,
+                track: currentTrack
             });
+        }
 
-            // Count track plays and get most recent data
-            const trackCounts = new Map<string, TrackCount>();
-
-            validatedData.forEach(entry => {
-                const trackId = entry.spotify_track_id;
-                if (!trackCounts.has(trackId)) {
-                    trackCounts.set(trackId, {
-                        count: 0,
-                        track: {
-                            id: trackId,
-                            title: entry.track_title,
-                            artist: entry.track_artist,
-                            album: entry.track_album,
-                            coverArt: entry.track_cover_art,
-                            popularity: entry.track_popularity
-                        }
-                    });
-                }
-                trackCounts.get(trackId)!.count++;
-            });
-
-            // Sort by play count and return top 5
-            return Array.from(trackCounts.values())
-                .sort((a, b) => b.count - a.count)
-                .slice(0, 5)
-                .map(item => item.track);
-        };
-
-        // Process recent tracks
-        const processRecentTracks = (data: unknown[]): RecentTrack[] => {
-            if (!data || !Array.isArray(data)) return [];
-
-            const validatedTracks: RecentTrack[] = [];
-            data.forEach(entry => {
-                const validation = ListeningHistorySchema.safeParse(entry);
-                if (validation.success) {
-                    const track = validation.data;
-                    validatedTracks.push({
-                        id: track.spotify_track_id,
-                        title: track.track_title,
-                        artist: track.track_artist,
-                        album: track.track_album,
-                        coverArt: track.track_cover_art,
-                        popularity: track.track_popularity,
-                        timestamp: new Date(track.listened_at).getTime(),
-                        isPlaying: track.is_playing || false
-                    });
-                } else {
-                    console.warn('Invalid recent track entry:', validation.error);
-                }
-            });
-
-            return validatedTracks;
-        };
-
+        // No track data available
         return NextResponse.json({
-            hasSpotify: true,
-            topTracks: {
-                short_term: processTopTracks(weeklyData.data || []),
-                medium_term: processTopTracks(monthlyData.data || []),
-                long_term: processTopTracks(allTimeData.data || [])
-            },
-            recentTracks: processRecentTracks(recentData.data || [])
-        });
+            error: 'No current track data available',
+            hasSpotify: true
+        }, { status: 404 });
 
     } catch (error) {
-        console.error('Error fetching user tracks:', error);
+        console.error('Error in user-activity API:', error);
         return NextResponse.json(
-            { error: 'Failed to fetch user tracks' },
+            {
+                error: 'Internal server error',
+                details: error instanceof Error ? error.message : 'Unknown error'
+            },
             { status: 500 }
         );
     }

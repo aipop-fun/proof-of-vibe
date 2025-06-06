@@ -56,6 +56,13 @@ interface FarcasterUser {
     username?: string;
     displayName?: string;
     pfpUrl?: string;
+    bio?: string;
+    followerCount?: number;
+    followingCount?: number;
+    verifiedAddresses?: {
+        eth_addresses: string[];
+        sol_addresses: string[];
+    };
 }
 
 interface SpotifyUser {

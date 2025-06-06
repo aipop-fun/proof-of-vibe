@@ -1,29 +1,52 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
-import React from 'react';
+import React, { useCallback } from 'react';
 import Image from 'next/image';
-import { useAuth } from '../lib/hooks/useAuth';
+import { useRouter } from 'next/navigation';
+import { useAuthStore } from '~/lib/stores/authStore';
+import { useFrame } from '~/components/providers/FrameProvider';
+import sdk from '@farcaster/frame-sdk';
 
 export function UserProfile() {
-    const { isLoading, user, isMiniApp, navigate } = useAuth();
+    const {
+        isLoading,
+        user,
+        fid: currentFid,
+        isAuthenticated,
+        //isLinked
+    } = useAuthStore();
+    const { isMiniApp } = useFrame();
+    const router = useRouter();
 
-    // Handle navigation to profile page
-    const handleProfileClick = () => {
-        if (!user?.fid) {
+    // Handle navigation to Timbra profile page with error handling
+    const handleProfileClick = useCallback(async () => {
+        if (!currentFid) {
             console.warn('No FID available for navigation');
             return;
         }
 
-        const profileUrl = `/profile/${user.fid}`;
+        try {
+            const profileUrl = `/profile/${currentFid}`;
 
-        // Use the navigate function from useAuth which handles both miniapp and web
-        navigate(profileUrl, false);
-    };
+            if (isMiniApp && typeof sdk?.actions?.openUrl === 'function') {
+                // For mini app, open the profile URL within the app
+                const baseUrl = process.env.NEXT_PUBLIC_URL || window.location.origin;
+                await sdk.actions.openUrl(`${baseUrl}${profileUrl}`);
+            } else {
+                // For web, use router navigation
+                router.push(profileUrl);
+            }
+        } catch (error) {
+            console.error('Failed to navigate to profile:', error);
+            // Fallback: try direct router navigation
+            router.push(`/profile/${currentFid}`);
+        }
+    }, [currentFid, isMiniApp, router]);
 
     // Loading state
     if (isLoading) {
         return (
-            <div className="flex items-center gap-2 animate-pulse">
+            <div className="flex items-center gap-2 animate-pulse" role="status" aria-label="Loading profile">
                 <div className="w-10 h-10 bg-purple-700/30 rounded-full"></div>
                 <div className="h-4 w-24 bg-purple-700/30 rounded"></div>
             </div>
@@ -31,7 +54,7 @@ export function UserProfile() {
     }
 
     // Not logged in state
-    if (!user.farcaster && !user.spotify) {
+    if (!isAuthenticated) {
         return (
             <div className="text-sm text-gray-400">
                 Not logged in
@@ -43,47 +66,60 @@ export function UserProfile() {
     const connectionStatus = !isMiniApp && (
         <div className="text-xs text-gray-400 flex flex-wrap gap-2">
             {user.farcaster && (
-                <span className="bg-blue-800/50 px-1 rounded">
+                <span className="bg-blue-800/50 px-1 rounded" title="Farcaster connected">
                     Farcaster ✓
                 </span>
             )}
             {user.spotify && (
-                <span className="bg-green-800/50 px-1 rounded">
+                <span className="bg-green-800/50 px-1 rounded" title="Spotify connected">
                     Spotify ✓
                 </span>
             )}
-            {user.fid && (
-                <span className="text-gray-500">
-                    FID: {user.fid}
+            {currentFid && (
+                <span className="text-gray-500" title="Farcaster ID">
+                    FID: {currentFid}
                 </span>
             )}
         </div>
     );
 
-    // Profile image component
+    // Profile image component with error handling
     const profileImage = user.profileImage ? (
         <div className="relative w-10 h-10 cursor-pointer hover:opacity-80 transition-opacity">
             <Image
                 src={user.profileImage}
-                alt={user.displayName || "Profile"}
+                alt={`${user.displayName || "User"}'s profile picture`}
                 fill
                 className="rounded-full object-cover"
                 sizes="40px"
                 priority
                 onClick={handleProfileClick}
+                onError={(e) => {
+                    console.warn('Profile image failed to load:', user.profileImage);
+                    e.currentTarget.style.display = 'none';
+                }}
             />
+            {/* Timbra profile indicator */}
+            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-purple-600 rounded-full flex items-center justify-center border border-purple-900">
+                <span className="text-xs font-bold text-white">T</span>
+            </div>
         </div>
     ) : (
-        // Fallback avatar with first letter
+        // Fallback avatar with first letter and Timbra indicator
         <div
-            className="w-10 h-10 rounded-full bg-purple-700 flex items-center justify-center cursor-pointer hover:bg-purple-600 transition-colors"
+            className="relative w-10 h-10 rounded-full bg-purple-700 flex items-center justify-center cursor-pointer hover:bg-purple-600 transition-colors"
             onClick={handleProfileClick}
+            title="View your Timbra profile"
         >
             <span className="text-white font-medium">
                 {user.displayName ? user.displayName.charAt(0).toUpperCase() :
                     user.farcaster?.username ? user.farcaster.username.charAt(0).toUpperCase() :
                         '?'}
             </span>
+            {/* Timbra profile indicator */}
+            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-purple-600 rounded-full flex items-center justify-center border border-purple-900">
+                <span className="text-xs font-bold text-white">T</span>
+            </div>
         </div>
     );
 
@@ -96,7 +132,7 @@ export function UserProfile() {
         );
 
     // Only show click functionality if we have an FID
-    const isClickable = !!user.fid;
+    const isClickable = !!currentFid;
 
     return (
         <div
@@ -105,9 +141,18 @@ export function UserProfile() {
                     : 'opacity-75'
                 }`}
             onClick={isClickable ? handleProfileClick : undefined}
-            title={isClickable ? "View your profile" : undefined}
+            title={isClickable ? "View your Timbra profile" : undefined}
+            role={isClickable ? "button" : undefined}
+            tabIndex={isClickable ? 0 : undefined}
+            onKeyDown={isClickable ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleProfileClick();
+                }
+            } : undefined}
         >
             {profileImage}
+
             <div className="flex-grow min-w-0">
                 <div className="font-medium truncate">
                     {user.displayName || user.farcaster?.username || 'User'}
@@ -116,9 +161,9 @@ export function UserProfile() {
                 {connectionStatus}
             </div>
 
-            {/* Optional: Add a small arrow icon to indicate it's clickable */}
+            {/* Navigation arrow icon - only show if clickable */}
             {isClickable && (
-                <div className="text-gray-400 opacity-50">
+                <div className="text-gray-400 opacity-50 transition-opacity group-hover:opacity-75">
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
                         width="16"
@@ -129,6 +174,7 @@ export function UserProfile() {
                         strokeWidth="2"
                         strokeLinecap="round"
                         strokeLinejoin="round"
+                        aria-hidden="true"
                     >
                         <path d="m9 18 6-6-6-6" />
                     </svg>

@@ -30,11 +30,45 @@ export function Skeleton({
  */
 export function ProfileSkeleton() {
     return (
-        <div className="flex items-center animate-pulse">
-            <div className="w-10 h-10 rounded-full bg-purple-800/50"></div>
-            <div className="ml-3 space-y-2">
-                <Skeleton height="h-4" width="w-24" />
-                <Skeleton height="h-3" width="w-32" />
+        <div className="space-y-6 animate-pulse">
+            {/* Profile header skeleton */}
+            <div className="bg-purple-800/20 rounded-lg p-6">
+                <div className="flex items-center gap-4 mb-4">
+                    <div className="w-16 h-16 bg-purple-700/30 rounded-full" />
+                    <div className="flex-1">
+                        <div className="h-6 bg-purple-700/30 rounded w-32 mb-2" />
+                        <div className="h-4 bg-purple-700/20 rounded w-24" />
+                    </div>
+                </div>
+                <div className="flex gap-4">
+                    <div className="text-center">
+                        <div className="h-6 bg-purple-700/30 rounded w-12 mb-1" />
+                        <div className="h-3 bg-purple-700/20 rounded w-16" />
+                    </div>
+                    <div className="text-center">
+                        <div className="h-6 bg-purple-700/30 rounded w-12 mb-1" />
+                        <div className="h-3 bg-purple-700/20 rounded w-16" />
+                    </div>
+                </div>
+            </div>
+
+            {/* Top tracks skeleton */}
+            <div className="bg-purple-800/20 rounded-lg p-4">
+                <div className="h-5 bg-purple-700/30 rounded w-24 mb-4" />
+                <div className="space-y-3">
+                    {[...Array(5)].map((_, i) => (
+                        <div key={i} className="flex items-center gap-3">
+                            <div className="w-8 text-center">
+                                <div className="h-4 bg-purple-700/20 rounded w-4" />
+                            </div>
+                            <div className="w-10 h-10 bg-purple-700/30 rounded" />
+                            <div className="flex-1">
+                                <div className="h-4 bg-purple-700/30 rounded w-24 mb-1" />
+                                <div className="h-3 bg-purple-700/20 rounded w-20" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     );
