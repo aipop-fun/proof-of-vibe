@@ -1,7 +1,7 @@
-/* eslint-disable react-hooks/exhaustive-deps, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
+/* eslint-disable react-hooks/exhaustive-deps, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, react/display-name */
 "use client";
 
-import { FC, useEffect, useState, useCallback } from 'react';
+import { FC, useEffect, useState, useCallback, memo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from "~/lib/stores/authStore";
 import { useFrame } from "~/components/providers/FrameProvider";
@@ -32,7 +32,7 @@ interface FriendsListeningProps {
   onTrackClick?: (track: FriendActivity['track']) => void;
 }
 
-export const FriendsListening: FC<FriendsListeningProps> = ({
+export const FriendsListening = memo<FriendsListeningProps>(({
   isLoading: propIsLoading = false,
   onProfileClick,
   onTrackClick
@@ -428,4 +428,10 @@ export const FriendsListening: FC<FriendsListeningProps> = ({
       </div>
     </div>
   );
-};
+}, (prevProps, nextProps) => {  
+  return (
+    prevProps.isLoading === nextProps.isLoading &&
+    prevProps.onProfileClick === nextProps.onProfileClick &&
+    prevProps.onTrackClick === nextProps.onTrackClick
+  );
+});

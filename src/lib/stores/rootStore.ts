@@ -137,15 +137,14 @@ export const useStore = create<
 >(persist(
   immer((set, get) => ({
     ...initialState,
-    
-    // Auth actions
+        
     login: ({ accessToken, refreshToken, expiresIn, user, method }) => set(state => {
       const existingMethod = state.auth.authMethod;
       const newMethod = existingMethod === 'farcaster' && method === 'spotify' ? 'both' :
                         existingMethod === 'spotify' && method === 'farcaster' ? 'both' :
                         method;
       
-      // Merge user data if already authenticated with another method
+      
       const mergedUser = state.auth.user 
         ? { ...state.auth.user, ...user } 
         : user;
@@ -180,7 +179,7 @@ export const useStore = create<
       };
       state.auth.authMethod = 'both';
       
-      // Optional: Call API to persist linking on server
+      
       if (farcasterUser.fid && spotifyUser.spotifyId) {
         fetch('/api/auth/link-accounts', {
           method: 'POST',
@@ -217,7 +216,7 @@ export const useStore = create<
     fetchMusicData: async () => {
       const { auth, isMusicStale } = get();
       
-      // Skip if not authenticated or has valid cache
+      
       if (!auth.isAuthenticated || !auth.accessToken || (!isMusicStale() && get().music.topTracks.length > 0)) {
         return;
       }
@@ -225,7 +224,7 @@ export const useStore = create<
       try {
         set(state => { state.music.loading = true; state.music.error = null; });
         
-        // Parallel data fetching
+        
         const [topTracksResponse, recentResponse] = await Promise.all([
           fetch('/api/users/tracks?timeRange=short_term', {
             headers: { Authorization: `Bearer ${auth.accessToken}` }
@@ -235,7 +234,7 @@ export const useStore = create<
           })
         ]);
         
-        // Process responses
+        
         if (topTracksResponse.ok) {
           const topData = await topTracksResponse.json();
           set(state => { state.music.topTracks = topData.items || []; });
@@ -259,7 +258,7 @@ export const useStore = create<
       }
     },
     
-    // Social actions
+    
     setFollowers: (followers) => set(state => {
       state.social.followers = followers;
       state.social.lastUpdated = Date.now();
@@ -334,6 +333,7 @@ export const useStore = create<
 export const useAuth = () => useStore(
   state => ({
     ...state.auth,
+    shallow,
     isExpired: () => state.auth.expiresAt ? Date.now() > state.auth.expiresAt : true,
     getDisplayName: () => {
       const user = state.auth.user;

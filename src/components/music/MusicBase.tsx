@@ -1,7 +1,7 @@
-/* eslint-disable  @typescript-eslint/no-unused-expressions, @typescript-eslint/no-unused-vars */
+/* eslint-disable  @typescript-eslint/no-unused-expressions, @typescript-eslint/no-unused-vars, react/display-name */
 "use client";
 
-import React from 'react';
+import React, { memo } from 'react';
 import { z } from 'zod';
 import { SpotifyImage } from '../SpotifyImage';
 import { useNavigation, useTimeFormatter } from '~/lib/hooks/useCommon';
@@ -21,7 +21,7 @@ const MusicBasePropsSchema = z.object({
 
 type MusicBaseProps = z.infer<typeof MusicBasePropsSchema>;
 
-export const MusicBase: React.FC<MusicBaseProps> = ({
+export const MusicBase = memo<MusicBaseProps>(({
     tracks,
     timeRange,
     title,
@@ -154,4 +154,11 @@ export const MusicBase: React.FC<MusicBaseProps> = ({
             )}
         </div>
     );
-};
+}, (prevProps, nextProps) => {
+    return (
+        JSON.stringify(prevProps.tracks) === JSON.stringify(nextProps.tracks) &&
+        prevProps.timeRange === nextProps.timeRange &&
+        prevProps.title === nextProps.title &&
+        prevProps.variant === nextProps.variant
+    );
+});

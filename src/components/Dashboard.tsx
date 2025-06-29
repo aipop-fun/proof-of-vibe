@@ -1,8 +1,8 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type,  @typescript-eslint/no-unused-vars, react-hooks/rules-of-hooks,  @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-empty-object-type,  @typescript-eslint/no-unused-vars, react-hooks/rules-of-hooks,  @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any, react/display-name */
 // @ts-nocheck
 "use client";
 
-import React, { useCallback } from 'react';
+import React, { memo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
 import { PersonalMusic } from './PersonalMusic';
@@ -28,7 +28,8 @@ type DashboardConfig = z.infer<typeof DashboardConfigSchema>;
 
 interface DashboardProps extends Partial<DashboardConfig> { }
 
-export const Dashboard: React.FC<DashboardProps> = (props) => {
+export const Dashboard = memo<DashboardProps>((props) => {
+  
   const { validateAndParse } = useValidation();
   const { isAuthenticated, isLinked, isLoading, user } = useAuth();
   const { isMiniApp } = useFrame();
@@ -44,7 +45,7 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
     className = ''
   } = config;
 
-  // Handle profile navigation to Timbra profiles
+  
   const handleProfileClick = useCallback(async (fid: number) => {
     try {
       const profileUrl = `/profile/${fid}`;
@@ -62,7 +63,7 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
     }
   }, [isMiniApp, router]);
 
-  // Handle track clicks to open in Spotify
+  
   const handleTrackClick = useCallback(async (track: any) => {
     try {
       let spotifyUrl = '';
@@ -169,7 +170,7 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
       <div className={className}>
         {renderHeader()}
 
-        {/* Tab Navigation */}
+        
         <div className="flex border-b border-purple-800 mb-6 overflow-x-auto">
           {enablePersonalMusic && (
             <button
@@ -209,7 +210,7 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
           )}
         </div>
 
-        {/* Tab Content */}
+        
         <div className="min-h-96">
           {activeTab === 'music' && enablePersonalMusic && renderPersonalMusic()}
           {activeTab === 'search' && enableSearch && renderSearch()}
@@ -218,8 +219,7 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
       </div>
     );
   }
-
-  // Single layout (default)
+  
   return (
     <div className={`space-y-6 ${className}`}>
       {renderHeader()}
@@ -228,4 +228,4 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
       {renderFriendsActivity()}
     </div>
   );
-};
+});

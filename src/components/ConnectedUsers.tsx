@@ -10,6 +10,7 @@ import { useFrame } from "./providers/FrameProvider";
 import { SearchBar } from "./SearchBar";
 import sdk from "@farcaster/frame-sdk";
 import { useRouter } from "next/navigation";
+import { usePerformance } from "~/lib/hooks/usePerformance";
 
 interface NeynarUser {
   fid: number;
@@ -36,6 +37,7 @@ export function ConnectedUsers() {
   const [filteredUsers, setFilteredUsers] = useState<NeynarUser[]>([]);
   const [allUsers, setAllUsers] = useState<NeynarUser[]>([]);
   const [selectedUser, setSelectedUser] = useState<number | null>(null);
+  const { useDebounce } = usePerformance();
   const [searchQuery, setSearchQuery] = useState("");
   const [userTracks, setUserTracks] = useState<any[]>([]);
   const [loadingTracks, setLoadingTracks] = useState(false);
@@ -46,7 +48,7 @@ export function ConnectedUsers() {
   const { isMiniApp } = useFrame();
   const { isAuthenticated, fid } = useAuthStore();
 
-  // Normalizar dados do usuário para compatibilidade
+  
   const normalizeUser = useCallback((user: any): NeynarUser => ({
     fid: user.fid,
     username: user.username,
@@ -62,7 +64,7 @@ export function ConnectedUsers() {
     bio: user.bio || user.profile?.bio?.text
   }), []);
 
-  // Buscar seguidores e seguindo
+  
   const fetchConnections = useCallback(async () => {
     if (!isAuthenticated || !fid) {
       setIsLoading(false);
@@ -266,11 +268,10 @@ export function ConnectedUsers() {
     }
   }, [allUsers, normalizeUser]);
 
-  // Manipular busca com debounce
-  const handleSearch = useCallback(async (query: string) => {
+  
+  const debouncedSetSearch = useDebounce((query: string) => {
     setSearchQuery(query);
-    await searchUsers(query);
-  }, [searchUsers]);
+  }, 300);
 
   // Função para formatar tempo relativo
   const formatRelativeTime = useCallback((timestamp?: number): string => {
@@ -408,15 +409,15 @@ const viewFarcasterProfile = useCallback((userFid: number): void => {
         </div>
       )}
 
-      {/* Barra de busca */}
+      
       <SearchBar
-        onSearch={handleSearch}
+        onSearch={debouncedSetSearch} 
         placeholder="Search friends..."
         className="mb-4"
         isLoading={isSearching}
       />
 
-      {/* Lista de usuários */}
+      
       {filteredUsers.length === 0 && !isLoading ? (
         <div className="text-center text-gray-400 p-4">
           {searchQuery ? (

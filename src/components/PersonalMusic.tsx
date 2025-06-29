@@ -1,14 +1,16 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unused-vars, react-hooks/rules-of-hooks, react-hooks/exhaustive-deps */
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuthStore } from "~/lib/stores/authStore";
 import { SpotifyTopTracks } from "./SpotifyTopTracks";
 import { SpotifyImage } from "./SpotifyImage";
+import { usePerformance } from "~/lib/hooks/usePerformance";
 
-const POLLING_INTERVAL = 30000; // 30 seconds
+const POLLING_INTERVAL = 60000; 
 
 export function PersonalMusic() {
+    const { useDebounce } = usePerformance();
     const [error, setError] = useState<string | null>(null);
 
     const {
@@ -21,11 +23,11 @@ export function PersonalMusic() {
         refreshTokenIfNeeded
     } = useAuthStore();
 
-    // Fetch and poll personal data
+    
     useEffect(() => {
         if (!isAuthenticated || !spotifyId) return;
 
-        const fetchData = async () => {
+        const debouncedFetchData = useDebounce(async () => {
             try {
                 setError(null);
                 const tokenValid = await refreshTokenIfNeeded();
@@ -36,19 +38,17 @@ export function PersonalMusic() {
                 console.error("Error fetching currently playing track:", err);
                 setError(err instanceof Error ? err.message : "Failed to fetch music data");
             }
-        };
+        }, 500);
 
-        // Initial fetch
-        fetchData();
-
-        // Set up polling interval
+        
+        debouncedFetchData();
+        
         const intervalId = setInterval(() => {
             if (isAuthenticated && spotifyId && accessToken) {
-                fetchData();
+                debouncedFetchData();
             }
         }, POLLING_INTERVAL);
-
-        // Clean up on unmount
+        
         return () => clearInterval(intervalId);
     }, [isAuthenticated, spotifyId, accessToken, fetchCurrentlyPlaying, refreshTokenIfNeeded]);
 

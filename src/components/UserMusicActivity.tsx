@@ -1,12 +1,13 @@
-/* eslint-disable react/no-unescaped-entities
+/* eslint-disable react/no-unescaped-entities, react/display-name, @typescript-eslint/no-unused-vars
  */
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import { SpotifyImage } from "./SpotifyImage";
 import { formatRelativeTime } from "~/lib/utils";
 import sdk from "@farcaster/frame-sdk";
 import { useFrame } from "./providers/FrameProvider";
+import { usePerformance } from "~/lib/hooks/usePerformance";
 
 export interface UserTrack {
     id: string;
@@ -26,19 +27,19 @@ interface UserMusicActivityProps {
     className?: string;
 }
 
-export function UserMusicActivity({
+export const UserMusicActivity = memo<UserMusicActivityProps>(({
     fid,
     username,
     spotifyId,
     className = ""
-}: UserMusicActivityProps) {
+}) => {
     const [currentTrack, setCurrentTrack] = useState<UserTrack | null>(null);
     const [recentTracks, setRecentTracks] = useState<UserTrack[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const { isMiniApp } = useFrame();
 
-    // Fetch user's music activity when component mounts
+    
     useEffect(() => {
         const fetchUserMusic = async () => {
             try {
@@ -225,7 +226,7 @@ export function UserMusicActivity({
             )}
         </div>
     );
-}
+});
 
 // Helper function to create a Spotify search URL
 function createSpotifySearchUrl(title: string, artist: string): string {

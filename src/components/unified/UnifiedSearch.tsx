@@ -10,6 +10,7 @@ import { MusicBase } from '../music/MusicBase';
 import { LoadingState } from '../ui/LoadingStates';
 import { useNavigation, useValidation } from '~/lib/hooks/useCommon';
 import { FarcasterUserSchema, TrackSchema } from '~/lib/schemas';
+import { usePerformance } from '~/lib/hooks/usePerformance';
 
 const UnifiedSearchPropsSchema = z.object({
     searchTypes: z.array(z.enum(['users', 'tracks', 'both'])).default(['both']),
@@ -42,51 +43,9 @@ export const UnifiedSearch: React.FC<UnifiedSearchProps> = (props) => {
         verified: false,
         timeRange: 'all' as const,
     });
+    const { useDebounce } = usePerformance();
 
-    const performSearch = useCallback(async (query: string) => {
-        if (!query.trim()) {
-            setResults(null);
-            return;
-        }
-
-        setIsSearching(true);
-
-        try {
-            const validatedProps = validateAndParse(UnifiedSearchPropsSchema, props);
-            if (!validatedProps) {
-                setResults({ users: [], tracks: [], total: 0, hasMore: false });
-                return;
-            }
-
-            const { searchTypes, maxResults } = validatedProps;
-
-            // Determine what to search based on searchTypes
-            const searchUsers = searchTypes.includes('users') || searchTypes.includes('both');
-            const searchTracks = searchTypes.includes('tracks') || searchTypes.includes('both');
-
-            const [usersResponse, tracksResponse] = await Promise.allSettled([
-                searchUsers ? fetch(`/api/search/users?q=${encodeURIComponent(query)}&limit=${maxResults}&hasSpotify=${filters.hasSpotify}`).then(r => r.json()) : { users: [] },
-                searchTracks ? fetch(`/api/search/tracks?q=${encodeURIComponent(query)}&limit=${maxResults}`).then(r => r.json()) : { tracks: [] }
-            ]);
-
-            const users = usersResponse.status === 'fulfilled' ? usersResponse.value.users || [] : [];
-            const tracks = tracksResponse.status === 'fulfilled' ? tracksResponse.value.tracks || [] : [];
-
-            const searchResult: SearchResult = {
-                users: validateAndParse(z.array(FarcasterUserSchema), users) || [],
-                tracks: validateAndParse(z.array(TrackSchema), tracks) || [],
-                total: users.length + tracks.length,
-                hasMore: users.length === maxResults || tracks.length === maxResults,
-            };
-
-            setResults(searchResult);
-        } catch (error) {
-            console.error('Search error:', error);
-            setResults({ users: [], tracks: [], total: 0, hasMore: false });
-        } finally {
-            setIsSearching(false);
-        }
-    }, [props, filters, validateAndParse]);
+    const debouncedPerformSearch = useDebounce(performSearch, 300);
 
     const handleUserSelect = useCallback((user: z.infer<typeof FarcasterUserSchema>) => {
         const validatedProps = validateAndParse(UnifiedSearchPropsSchema, props);
@@ -220,7 +179,7 @@ export const UnifiedSearch: React.FC<UnifiedSearchProps> = (props) => {
     return (
         <div className={`space-y-4 ${className}`}>
             <SearchBar
-                onSearch={performSearch}
+                onSearch={debouncedPerformSearch} 
                 placeholder={placeholder}
                 isLoading={isSearching}
             />
