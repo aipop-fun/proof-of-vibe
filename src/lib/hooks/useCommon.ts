@@ -3,7 +3,6 @@ import { useFrame } from '~/components/providers/FrameProvider';
 import sdk from '@farcaster/frame-sdk';
 import { z } from 'zod';
 
-// Common time formatting
 export const useTimeFormatter = () => {
     const formatRelativeTime = useCallback((timestamp: number): string => {
         const now = Date.now();
@@ -26,7 +25,6 @@ export const useTimeFormatter = () => {
     return { formatRelativeTime, formatDuration };
 };
 
-// Common navigation
 export const useNavigation = () => {
     const { isMiniApp } = useFrame();
 
@@ -55,7 +53,6 @@ export const useNavigation = () => {
 
     const composeCast = useCallback((text: string, embeds?: string[]) => {
         if (isMiniApp && typeof sdk?.actions?.composeCast === 'function') {
-            // Convert embeds array to the format expected by the SDK
             const formattedEmbeds: [] | [string] | [string, string] | undefined =
                 !embeds || embeds.length === 0 ? undefined :
                     embeds.length === 1 ? [embeds[0]] :
@@ -73,7 +70,6 @@ export const useNavigation = () => {
     return { navigate, viewProfile, openSpotify, composeCast };
 };
 
-// Common validation
 export const useValidation = () => {
     const validateAndParse = useCallback(<T>(
         schema: z.ZodType<T>,
