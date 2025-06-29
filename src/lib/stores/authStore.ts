@@ -8,7 +8,8 @@ import {
     getTopTracks,
     getUserProfile,
     validateToken,
-    refreshAccessToken
+    refreshAccessToken, 
+    getRecentlyPlayedTracks
 } from '~/lib/spotify-api-service';
 import { listeningHistoryService } from '~/lib/services/listeningHistoryService';
 
@@ -79,7 +80,7 @@ interface SpotifyUser {
     }>;
 }
 
-// Interface para resposta da API de vinculação de contas
+
 interface LinkAccountsResponse {
     success: boolean;
     error?: string;
@@ -91,9 +92,8 @@ interface LinkAccountsResponse {
     };
 }
 
-// Main auth store state interface
+
 interface AuthState {
-    // Auth state
     accessToken: string | null;
     refreshToken: string | null;
     expiresAt: number | null;
@@ -137,19 +137,25 @@ interface AuthState {
     isLoadingConnections: boolean;
     userTopTracks: Record<number, SpotifyTrack[]>;
 
-    userTracks: Record<string, UserTrackData>; // keyed by fid or spotifyId
+    userTracks: Record<string, UserTrackData>; 
     loadingUserTracks: Record<string, boolean>;
     userTracksError: Record<string, string | null>;
 
-    // Functions
+    recentTracks: SpotifyTrack[];
+    loadingRecentTracks: boolean;
+    lastFetchAttempt: number | null;
+    retryCount: number;
+
+    fetchRecentTracks: () => Promise<void>;
+    resetRetryCount: () => void;
+    
     fetchUserCurrentTrack: (fidOrSpotifyId: number | string) => Promise<UserTrackData | null>;
     fetchConnectedUsers: () => Promise<void>;
     fetchUserTopTracks: (fid: number) => Promise<void>;
     setLinkedStatus: (status: boolean) => void;
     checkLinkedStatus: () => Promise<void>;
     setLinkingError: (error: string | null) => void;
-
-    // Nova função para vincular contas
+    
     linkAccounts: (fid: number, spotifyId: string) => Promise<LinkAccountsResponse>;
 
     setSpotifyAuth: (data: {
@@ -185,17 +191,16 @@ interface AuthState {
     clearMusicData: () => void;
     setError: (error: string | null) => void;
     toggleAutoSave: (enabled: boolean) => void;
-
-    // Derived getters
+    
     getDisplayName: () => string;
     getProfileImage: () => string | undefined;
 }
 
-// Create store with persistence
+
 export const useAuthStore = create<AuthState>()(
     persist(
         (set, get) => ({
-            // Initial auth state
+
             userTracks: {},
             loadingUserTracks: {},
             userTracksError: {},
@@ -223,11 +228,15 @@ export const useAuthStore = create<AuthState>()(
 
             // Initial music data state
             currentlyPlaying: null,
+            recentTracks: [],
             topTracks: {
-                short_term: [], // Last 4 weeks
-                medium_term: [], // Last 6 months
-                long_term: [], // All time
+                short_term: [],
+                medium_term: [],
+                long_term: [],
             },
+            loadingRecentTracks: false,
+            lastFetchAttempt: null,
+            retryCount: 0,
             isLoadingTracks: {
                 short_term: false,
                 medium_term: false,
@@ -448,7 +457,134 @@ export const useAuthStore = create<AuthState>()(
                 };
             }),
 
-            // Set Spotify user
+            refreshTokenIfNeeded: async () => {
+                const state = get();
+
+                
+                if (!state.refreshToken) {
+                    console.log('No refresh token available');
+                    return false;
+                }
+
+                
+                if (state.accessToken && !state.isExpired()) {
+                    return true;
+                }
+
+                console.log('Token expired, attempting refresh...');
+
+                try {
+                    const { accessToken, refreshToken, expiresAt } = await refreshAccessToken(state.refreshToken);
+
+                    set({
+                        accessToken,
+                        refreshToken: refreshToken || state.refreshToken,
+                        expiresAt,
+                        error: null,
+                        retryCount: 0,
+                    });
+
+                    console.log('Token refreshed successfully');
+                    return true;
+                } catch (error) {
+                    console.error('Failed to refresh token:', error);
+
+                    
+                    const errorMessage = error instanceof Error ? error.message : '';
+                    if (errorMessage.includes('401') || errorMessage.includes('403')) {
+                        set({
+                            error: "Your Spotify session has expired. Please sign in again.",
+                            accessToken: null,
+                            refreshToken: null,
+                            isAuthenticated: false,
+                        });
+                    } else {
+                        set({ error: "Connection error. Retrying..." });
+                    }
+
+                    return false;
+                }
+            },
+
+
+            fetchCurrentlyPlaying: async () => {
+                const state = get();
+                
+                const tokenValid = await state.refreshTokenIfNeeded();
+                if (!tokenValid || !state.accessToken) {
+                    set({
+                        error: "Authentication required to fetch current track",
+                        loadingCurrentTrack: false
+                    });
+                    return;
+                }
+
+                set({
+                    loadingCurrentTrack: true,
+                    error: null,
+                    lastFetchAttempt: Date.now()
+                });
+
+                try {
+                    const track = await getCurrentlyPlaying(state.accessToken);
+
+                    set({
+                        currentlyPlaying: track,
+                        loadingCurrentTrack: false,
+                        retryCount: 0, 
+                    });
+                    
+                    if (track && state.autoSaveEnabled && state.userId && state.fid) {
+                        const shouldSave = (
+                            state.lastSavedTrack !== track.id ||
+                            (track.isPlaying && track.progressMs && track.progressMs > 30000)
+                        );
+
+                        if (shouldSave) {
+                            try {
+                                await listeningHistoryService.saveListeningHistory(
+                                    state.userId,
+                                    state.fid,
+                                    track
+                                );
+                                set({ lastSavedTrack: track.id });
+                                console.log('Track saved to listening history:', track.title);
+                            } catch (saveError) {
+                                console.error('Error saving track to history:', saveError);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error("Error fetching currently playing track:", error);
+                    
+                    const newRetryCount = state.retryCount + 1;
+                    
+                    let errorMessage = "Failed to fetch current track";
+                    if (error instanceof Error) {
+                        const msg = error.message;
+                        if (msg.includes('UNAUTHORIZED')) {
+                            errorMessage = "Session expired. Please reconnect Spotify.";
+                        } else if (msg.includes('FORBIDDEN')) {
+                            errorMessage = "Spotify Premium required for some features.";
+                        } else if (msg.includes('RATE_LIMITED')) {
+                            errorMessage = "Too many requests. Please wait a moment.";
+                        } else if (msg.includes('SPOTIFY_DOWN')) {
+                            errorMessage = "Spotify is temporarily unavailable.";
+                        } else if (msg.includes('NETWORK_ERROR')) {
+                            errorMessage = "Check your internet connection.";
+                        } else {
+                            errorMessage = msg;
+                        }
+                    }
+
+                    set({
+                        error: errorMessage,
+                        loadingCurrentTrack: false,
+                        retryCount: newRetryCount,
+                    });
+                }
+            },
+            
             setSpotifyUser: (user, token, refreshToken, expiresIn) => set((state) => {
                 const spotifyExpiresAt = expiresIn
                     ? Date.now() + expiresIn * 1000
@@ -470,14 +606,44 @@ export const useAuthStore = create<AuthState>()(
                 };
             }),
 
-            // Set mini app status
+            fetchRecentTracks: async () => {
+                const state = get();
+                const tokenValid = await state.refreshTokenIfNeeded();
+
+                if (!tokenValid || !state.accessToken) {
+                    return;
+                }
+
+                set({ loadingRecentTracks: true });
+
+                try {
+                    // Importar função se não existir ainda
+                    const tracks = await getRecentlyPlayedTracks(state.accessToken);
+
+                    set({
+                        recentTracks: tracks || [],
+                        loadingRecentTracks: false,
+                    });
+                } catch (error) {
+                    console.error("Error fetching recent tracks:", error);
+                    set({
+                        loadingRecentTracks: false,
+                    });
+                }
+            },
+
+            resetRetryCount: () => {
+                set({ retryCount: 0, error: null });
+            },
+
+            
             setMiniAppStatus: (isMiniApp) => set({ isMiniApp }),
 
             linkAccounts: async (fid, spotifyId) => {
                 try {
                     console.log(`Linking accounts for FID: ${fid} and Spotify ID: ${spotifyId}`);
 
-                    // Fazer a chamada para a API de vinculação de contas
+            
                     const response = await fetch("/api/auth/link-accounts", {
                         method: "POST",
                         headers: {
@@ -489,7 +655,7 @@ export const useAuthStore = create<AuthState>()(
                     const data = await response.json();
 
                     if (response.ok && data.success) {
-                        // Atualizar o estado para mostrar que as contas estão vinculadas
+                        
                         set({ isLinked: true, linkingError: null });
 
                         return {
@@ -497,7 +663,7 @@ export const useAuthStore = create<AuthState>()(
                             user: data.user
                         };
                     } else {
-                        // Se houver um erro na vinculação, atualizar o estado de erro
+                        
                         const errorMessage = data.error || "Failed to link accounts";
                         set({ linkingError: errorMessage });
 
@@ -530,8 +696,7 @@ export const useAuthStore = create<AuthState>()(
                 }
             },
 
-            setSpotifyAuth: (data) => {
-                // Calcular o timestamp de expiração baseado no expiresIn
+            setSpotifyAuth: (data) => {                
                 const expiresAt = Math.floor((data.tokenTimestamp + (data.expiresIn * 1000)) / 1000);
 
                 set({
@@ -582,58 +747,25 @@ export const useAuthStore = create<AuthState>()(
                     spotify: null,
                     authMethod: null,
                     currentlyPlaying: null,
+                    recentTracks: [],
                     topTracks: {
                         short_term: [],
                         medium_term: [],
                         long_term: [],
                     },
+                    retryCount: 0, 
+                    lastFetchAttempt: null, 
+                    error: null, 
                 });
             },
 
             isExpired: () => {
                 const state = get();
-                if (!state.expiresAt) return true;
-                // Add 5 minute buffer
+                if (!state.expiresAt) return true;                
                 return Date.now() > (state.expiresAt * 1000) - (5 * 60 * 1000);
             },
 
-            refreshTokenIfNeeded: async () => {
-                const state = get();
 
-                // If not authenticated or no refresh token, can't refresh
-                if (!state.refreshToken) {
-                    return false;
-                }
-
-                // If token is still valid, no need to refresh
-                if (state.accessToken && !state.isExpired()) {
-                    return true;
-                }
-
-                try {
-                    // Attempt to refresh the token
-                    const { accessToken, refreshToken, expiresAt } = await refreshAccessToken(state.refreshToken);
-
-                    set({
-                        accessToken,
-                        refreshToken: refreshToken || state.refreshToken,
-                        expiresAt,
-                        error: null,
-                    });
-
-                    return true;
-                } catch (error) {
-                    console.error('Failed to refresh token:', error);
-                    set({
-                        error: "Your Spotify session has expired. Please sign in again.",
-                        accessToken: null,
-                    });
-
-                    return false;
-                }
-            },
-
-            // Spotify API functions
             fetchSpotifyProfile: async () => {
                 const state = get();
                 const tokenValid = await state.refreshTokenIfNeeded();
@@ -708,55 +840,6 @@ export const useAuthStore = create<AuthState>()(
                 }
             },
 
-            fetchCurrentlyPlaying: async () => {
-                const state = get();
-                const tokenValid = await state.refreshTokenIfNeeded();
-
-                if (!tokenValid || !state.accessToken) {
-                    set({ error: "Authentication required to fetch current track" });
-                    return;
-                }
-
-                set({ loadingCurrentTrack: true, error: null });
-
-                try {
-                    const track = await getCurrentlyPlaying(state.accessToken);
-                    set({
-                        currentlyPlaying: track,
-                        loadingCurrentTrack: false
-                    });
-
-                    if (track && state.autoSaveEnabled && state.userId && state.fid) {
-                        // Only save if it's a different track or significant progress change
-                        const shouldSave = (
-                            state.lastSavedTrack !== track.id ||
-                            (track.isPlaying && track.progressMs && track.progressMs > 30000) // After 30 seconds
-                        );
-
-                        if (shouldSave) {
-                            try {
-                                await listeningHistoryService.saveListeningHistory(
-                                    state.userId,
-                                    state.fid,
-                                    track
-                                );
-
-                                set({ lastSavedTrack: track.id });
-                                console.log('Track saved to listening history:', track.title);
-                            } catch (saveError) {
-                                console.error('Error saving track to history:', saveError);
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.error("Error fetching currently playing track:", error);
-                    set({
-                        error: error instanceof Error ? error.message : "Failed to fetch current track",
-                        loadingCurrentTrack: false
-                    });
-                }
-            },
-
             clearMusicData: () => {
                 set({
                     currentlyPlaying: null,
@@ -789,6 +872,8 @@ export const useAuthStore = create<AuthState>()(
 
                 return 'User';
             },
+
+            
 
             getProfileImage: () => {
                 const state = get();

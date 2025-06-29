@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
 
-// Define TimeRange type here instead of importing it from a non-existent path
+
 export type TimeRange = 'short_term' | 'medium_term' | 'long_term';
 
-// Define SpotifyTrack interface
+
 export interface SpotifyTrack {
     id: string;
     title: string;
@@ -176,6 +176,43 @@ export async function getUserProfile(accessToken: string): Promise<any> {
         return response.json();
     } catch (error) {
         console.error('Error fetching user profile:', error);
+        throw error;
+    }
+}
+
+
+export async function getRecentlyPlayedTracks(accessToken: string): Promise<SpotifyTrack[] | null> {
+    try {
+        const response = await fetch('https://api.spotify.com/v1/me/player/recently-played?limit=10', {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+            },
+        });
+
+        if (response.status === 204) return [];
+
+        if (!response.ok) {
+            throw new Error(`API Error (${response.status})`);
+        }
+
+        const data = await response.json();
+
+        if (!data.items) return [];
+
+        return data.items.map((item: any) => ({
+            id: item.track.id,
+            title: item.track.name,
+            artist: item.track.artists.map((artist: any) => artist.name).join(', '),
+            album: item.track.album.name,
+            coverArt: item.track.album.images[0]?.url,
+            duration: formatDuration(item.track.duration_ms),
+            uri: item.track.uri,
+            spotifyUrl: item.track.external_urls?.spotify,
+            played_at: item.played_at,
+        }));
+    } catch (error) {
+        console.error('Error fetching recent tracks:', error);
         throw error;
     }
 }
