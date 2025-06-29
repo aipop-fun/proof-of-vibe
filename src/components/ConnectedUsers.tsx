@@ -9,8 +9,8 @@ import { SpotifyImage } from "./SpotifyImage";
 import { useFrame } from "./providers/FrameProvider";
 import { SearchBar } from "./SearchBar";
 import sdk from "@farcaster/frame-sdk";
+import { useRouter } from "next/navigation";
 
-// Tipos corrigidos para maior compatibilidade
 interface NeynarUser {
   fid: number;
   username?: string;
@@ -32,7 +32,7 @@ interface NeynarUser {
 }
 
 export function ConnectedUsers() {
-  // Estados do componente
+  const router = useRouter();
   const [filteredUsers, setFilteredUsers] = useState<NeynarUser[]>([]);
   const [allUsers, setAllUsers] = useState<NeynarUser[]>([]);
   const [selectedUser, setSelectedUser] = useState<number | null>(null);
@@ -284,16 +284,38 @@ export function ConnectedUsers() {
     if (diff < 86400) return `${Math.floor(diff / 3600)} hr ago`;
     return `${Math.floor(diff / 86400)} days ago`;
   }, []);
+  
+const viewProfile = useCallback((userFid: number): void => {
+  if (!userFid) return;
 
-  // Visualizar perfil do usuário
-  const viewProfile = useCallback((userFid: number): void => {
-    if (userFid && sdk?.actions?.viewProfile) {
-      sdk.actions.viewProfile({ fid: userFid });
+  try {
+    const profileUrl = `/profile/${userFid}`;
+
+    if (isMiniApp && typeof sdk?.actions?.openUrl === 'function') {
+      const baseUrl = process.env.NEXT_PUBLIC_URL || window.location.origin;
+      sdk.actions.openUrl(`${baseUrl}${profileUrl}`);
+    } else {
+      router.push(profileUrl);
     }
-  }, []);
+  } catch (error) {
+    console.error('Failed to navigate to profile:', error);
+    router.push(`/profile/${userFid}`);
+  }
+}, [isMiniApp, router]); 
+  
+  
+const viewFarcasterProfile = useCallback((userFid: number): void => {
+  if (!userFid) return;
 
-  // Enviar convite para usuário
-  const sendInvite = useCallback((user: NeynarUser): void => {
+  if (isMiniApp && typeof sdk?.actions?.viewProfile === 'function') {
+    sdk.actions.viewProfile({ fid: userFid });
+  } else {
+    window.open(`https://warpcast.com/~/profiles/${userFid}`, '_blank', 'noopener,noreferrer');
+  }
+}, [isMiniApp]);
+
+
+ const sendInvite = useCallback((user: NeynarUser): void => {
     if (!user.username) return;
 
     const message = `Hey @${user.username}, check out Timbra! Connect your Spotify and share your music with friends on Farcaster. ${process.env.NEXT_PUBLIC_URL || "https://timbra.app"}`;
