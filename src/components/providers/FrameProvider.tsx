@@ -6,8 +6,8 @@ import sdk, {
   type FrameNotificationDetails,
   AddFrame
 } from "@farcaster/frame-sdk";
-import { createStore } from "mipd";
 import React from "react";
+import { isFarcasterMiniApp } from "~/lib/splashScreen";
 
 interface FrameContextType {
   isSDKLoaded: boolean;
@@ -16,7 +16,7 @@ interface FrameContextType {
   notificationDetails: FrameNotificationDetails | null;
   lastEvent: string;
   isMiniApp: boolean;
-  addFrame: () => Promise<void>;
+  addFrame: () => Promise<AddFrame.AddFrameResult>;
   addFrameResult: string;
 }
 
@@ -51,28 +51,33 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
    */
   const addFrame = useCallback(async () => {
     try {
-      setNotificationDetails(null);
+      setAddFrameResult("");
 
+      // Call the SDK action to add the frame
       const result = await sdk.actions.addFrame();
 
       if (result.notificationDetails) {
         setNotificationDetails(result.notificationDetails);
+        setAdded(true);
+
+        // Store notification token if needed
+        console.log("Frame added with notification details", result.notificationDetails);
+
+        // Set the result message
+        setAddFrameResult("Frame successfully added!");
       }
-      setAddFrameResult(
-        result.notificationDetails
-          ? `Added, got notification token ${result.notificationDetails.token} and url ${result.notificationDetails.url}`
-          : "Added, got no notification details"
-      );
+
+      return result;
     } catch (error) {
       if (error instanceof AddFrame.RejectedByUser) {
-        setAddFrameResult(`Not added: ${error.message}`);
+        setAddFrameResult(`User rejected adding the frame: ${error.message}`);
+      } else if (error instanceof AddFrame.InvalidDomainManifest) {
+        setAddFrameResult(`Invalid domain manifest: ${error.message}`);
+      } else {
+        setAddFrameResult(`Error adding frame: ${error}`);
       }
-
-      if (error instanceof AddFrame.InvalidDomainManifest) {
-        setAddFrameResult(`Not added: ${error.message}`);
-      }
-
-      setAddFrameResult(`Error: ${error}`);
+      console.error("Error adding frame:", error);
+      throw error;
     }
   }, []);
 
@@ -80,14 +85,34 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const load = async () => {
       try {
+        // Check if the SDK is already initialized
+        if (isSDKLoaded) return;
+
         // Check if running in Farcaster mini app environment
-        const isFarcasterMiniApp = window.parent !== window ||
-          !!window.location.href.match(/fc-frame=|warpcast\.com/i);
-        setIsMiniApp(isFarcasterMiniApp);
+        const miniAppDetected = isFarcasterMiniApp();
+        setIsMiniApp(miniAppDetected);
 
         // Get context from SDK
-        const frameContext = await sdk.context;
-        setContext(frameContext);
+        try {
+          const frameContext = await sdk.context;
+
+          if (frameContext) {
+            setContext(frameContext);
+
+            // Check if the app is already added
+            if (frameContext?.client?.added) {
+              setAdded(true);
+              if (frameContext.client.notificationDetails) {
+                setNotificationDetails(frameContext.client.notificationDetails);
+              }
+            }
+          }
+        } catch (contextError) {
+          console.warn("Non-critical error getting frame context:", contextError);
+          // This may fail in non-mini-app contexts, which is fine
+        }
+
+        // Mark SDK as loaded
         setIsSDKLoaded(true);
 
         // Set up event listeners
@@ -107,6 +132,7 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
         sdk.on("frameRemoved", () => {
           console.log("Frame removed");
           setAdded(false);
+          setNotificationDetails(null);
           setLastEvent("Frame removed");
         });
 
@@ -122,28 +148,8 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
           setLastEvent("Notifications disabled");
         });
 
-        sdk.on("primaryButtonClicked", () => {
-          console.log("Primary button clicked");
-          setLastEvent("Primary button clicked");
-        });
-
-        // Call ready action to signal frame is ready
-        console.log("Calling ready");
-        try {
-          await sdk.actions.ready({});
-        } catch (readyError) {
-          console.error("Error calling ready:", readyError);
-        }
-
-        // Set up MIPD Store for wallet integration
-        try {
-          const store = createStore();
-          store.subscribe((providerDetails) => {
-            console.log("PROVIDER DETAILS", providerDetails);
-          });
-        } catch (mipdError) {
-          console.error("Error initializing MIPD store:", mipdError);
-        }
+        // Note: We no longer call sdk.actions.ready() here
+        // AppLoader will take care of that at the appropriate time
       } catch (error) {
         console.error("Error initializing Frame SDK:", error);
       }
@@ -151,18 +157,22 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
 
     if (typeof window !== 'undefined' && !isSDKLoaded) {
       console.log("Loading Frame SDK");
-      setIsSDKLoaded(true);
       load();
 
       return () => {
         // Clean up event listeners on unmount
         if (sdk) {
-          sdk.removeAllListeners();
+          try {
+            sdk.removeAllListeners();
+          } catch (error) {
+            console.warn("Error removing listeners:", error);
+          }
         }
       };
     }
   }, [isSDKLoaded]);
 
+  // Context value to be provided to child components
   const value: FrameContextType = {
     isSDKLoaded,
     context,

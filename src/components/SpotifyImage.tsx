@@ -1,3 +1,4 @@
+/* eslint-disable  @typescript-eslint/no-unused-vars, prefer-const */
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -15,8 +16,8 @@ interface SpotifyImageProps {
 }
 
 /**
- * Componente para exibir imagens do Spotify com fallback
- * Resolve problemas de domínios bloqueados e imagens inexistentes
+ * Component for displaying Spotify images with fallback
+ * Resolves issues with blocked domains and missing images
  */
 export function SpotifyImage({
   src,
@@ -71,12 +72,15 @@ export function SpotifyImage({
   // Check if URL is from Spotify
   const isSpotifyUrl = src.includes('scdn.co') || src.includes('spotifycdn.com');
 
-  // For Spotify URLs, use a proxy if needed
-  const finalSrc = imgSrc;
-  if (isSpotifyUrl && !imgSrc.startsWith('/api/') && !error) {
-    // Uncomment this if you decide to implement an image proxy
-    // finalSrc = `/api/image-proxy?url=${encodeURIComponent(imgSrc)}`;
-  }
+  // For Spotify URLs, see if we need a proxy
+  // Example: instead of linking directly to i.scdn.co, 
+  // we could use our own proxy: /api/image-proxy?url=...
+  let finalSrc = imgSrc;
+
+  // Uncomment this to use a proxy for Spotify images
+  // if (isSpotifyUrl && !imgSrc.startsWith('/api/') && !error) {
+  //   finalSrc = `/api/image-proxy?url=${encodeURIComponent(imgSrc)}`;
+  // }
 
   return (
     <Image

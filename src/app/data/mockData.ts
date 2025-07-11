@@ -1,4 +1,4 @@
-// Mock data for Proof of Vibes MVP
+// Mock data for Timbra MVP
 export const mockFriendData = {
     currentlyListening: [
         {

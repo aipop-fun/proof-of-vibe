@@ -4,6 +4,8 @@ import dynamic from "next/dynamic";
 import type { Session } from "next-auth"
 import { SessionProvider } from "next-auth/react"
 import { FrameProvider } from "~/components/providers/FrameProvider";
+import { AppLoader } from "~/components/AppLoader";
+import { StoreInitializer } from "~/components/providers/StoreInitializer";
 
 const WagmiProvider = dynamic(
   () => import("~/components/providers/WagmiProvider"),
@@ -17,7 +19,12 @@ export function Providers({ session, children }: { session: Session | null, chil
     <SessionProvider session={session}>
       <WagmiProvider>
         <FrameProvider>
-          {children}
+          {/* Initialize the unified store */}
+          <StoreInitializer>
+            <AppLoader>
+              {children}
+            </AppLoader>
+          </StoreInitializer>
         </FrameProvider>
       </WagmiProvider>
     </SessionProvider>
