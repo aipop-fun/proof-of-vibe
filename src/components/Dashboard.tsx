@@ -1,19 +1,24 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type,  @typescript-eslint/no-unused-vars, react-hooks/rules-of-hooks,  @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-empty-object-type,  @typescript-eslint/no-unused-vars, react-hooks/rules-of-hooks,  @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-expressions */
 // @ts-nocheck
 "use client";
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
 import { PersonalMusic } from './PersonalMusic';
 import { UnifiedSearch } from './unified/UnifiedSearch';
 import { FriendsListening } from './FriendsListening';
 import { AccountStatus } from './AccountStatus';
+import { SpotifyReconnectHandler } from './SpotifyReconnectHandler';
 import { useAuth } from '~/lib/hooks/useAuth';
 import { useFrame } from '~/components/providers/FrameProvider';
+import { useAuthStore } from '~/lib/stores/authStore';
 import { useValidation } from '~/lib/hooks/useCommon';
 import { LoadingState } from './ui/LoadingStates';
 import sdk from '@farcaster/frame-sdk';
+
+import { AuthDebugPanel } from '~/components/AuthDebugPanel';
+import { SpotifyApiTester } from '~/components/SpotifyApiTester';
 
 const DashboardConfigSchema = z.object({
   layout: z.enum(['single', 'sidebar', 'tabs']).default('single'),
@@ -34,6 +39,16 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
   const { isMiniApp } = useFrame();
   const router = useRouter();
 
+  // Get additional auth state for Spotify reconnection handling
+  const {
+    spotifyId,
+    accessToken,
+    isExpired,
+    refreshTokenIfNeeded
+  } = useAuthStore();
+
+  const [showReconnectModal, setShowReconnectModal] = useState(false);
+
   const config = validateAndParse(DashboardConfigSchema, props) ?? {};
   const {
     layout = 'single',
@@ -43,6 +58,23 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
     autoRefresh = true,
     className = ''
   } = config;
+
+  // Check if we need full page reconnect
+  const needsFullReconnect = isAuthenticated && spotifyId && (!accessToken || isExpired());
+
+  // Monitor auth state and show modal if needed
+  useEffect(() => {
+    if (needsFullReconnect && !showReconnectModal) {
+      // Try to refresh token first
+      refreshTokenIfNeeded().then((success) => {
+        if (!success) {
+          setShowReconnectModal(true);
+        }
+      }).catch(() => {
+        setShowReconnectModal(true);
+      });
+    }
+  }, [needsFullReconnect, showReconnectModal, refreshTokenIfNeeded]);
 
   // Handle profile navigation to Timbra profiles
   const handleProfileClick = useCallback(async (fid: number) => {
@@ -84,6 +116,24 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
     }
   }, [isMiniApp]);
 
+  // Handle reconnect click
+  const handleReconnectClick = () => {
+    setShowReconnectModal(false);
+    const baseUrl = process.env.NEXT_PUBLIC_URL || window.location.origin;
+    const params = new URLSearchParams({
+      source: isMiniApp ? 'miniapp' : 'web',
+      reconnect: 'true',
+      ...(user?.fid && { fid: user.fid.toString() })
+    });
+    const reconnectUrl = `${baseUrl}/api/auth/signin/spotify?${params.toString()}`;
+
+    if (isMiniApp) {
+      window.location.href = reconnectUrl;
+    } else {
+      window.location.href = reconnectUrl;
+    }
+  };
+
   if (isLoading) {
     return <LoadingState variant="page" message="Loading dashboard..." />;
   }
@@ -96,10 +146,20 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
     );
   }
 
+  // Show full page reconnect if needed
+  if (showReconnectModal) {
+    return (
+      <SpotifyReconnectHandler
+        variant="page"
+        onReconnectClick={handleReconnectClick}
+      />
+    );
+  }
+
   const renderHeader = () => (
     <header className="mb-6">
       <h1 className="text-2xl font-bold mb-2">
-        Welcome back{user.farcaster?.displayName ? `, ${user.farcaster.displayName}` : ''}!
+        Welcome back{user?.farcaster?.displayName ? `, ${user.farcaster.displayName}` : ''}!
       </h1>
       <AccountStatus />
     </header>
@@ -175,8 +235,8 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
             <button
               onClick={() => setActiveTab('music')}
               className={`px-4 py-2 whitespace-nowrap transition-colors ${activeTab === 'music'
-                  ? 'border-b-2 border-purple-500 text-purple-300'
-                  : 'text-gray-400 hover:text-gray-300'
+                ? 'border-b-2 border-purple-500 text-purple-300'
+                : 'text-gray-400 hover:text-gray-300'
                 }`}
               aria-pressed={activeTab === 'music'}
             >
@@ -187,8 +247,8 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
             <button
               onClick={() => setActiveTab('search')}
               className={`px-4 py-2 whitespace-nowrap transition-colors ${activeTab === 'search'
-                  ? 'border-b-2 border-purple-500 text-purple-300'
-                  : 'text-gray-400 hover:text-gray-300'
+                ? 'border-b-2 border-purple-500 text-purple-300'
+                : 'text-gray-400 hover:text-gray-300'
                 }`}
               aria-pressed={activeTab === 'search'}
             >
@@ -199,8 +259,8 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
             <button
               onClick={() => setActiveTab('friends')}
               className={`px-4 py-2 whitespace-nowrap transition-colors ${activeTab === 'friends'
-                  ? 'border-b-2 border-purple-500 text-purple-300'
-                  : 'text-gray-400 hover:text-gray-300'
+                ? 'border-b-2 border-purple-500 text-purple-300'
+                : 'text-gray-400 hover:text-gray-300'
                 }`}
               aria-pressed={activeTab === 'friends'}
             >
@@ -226,6 +286,14 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
       {renderPersonalMusic()}
       {renderSearch()}
       {renderFriendsActivity()}
+      {
+        process.env.NODE_ENV === 'development' && (
+          <>
+            <AuthDebugPanel />
+            <SpotifyApiTester />
+          </>
+        )
+      }
     </div>
   );
 };

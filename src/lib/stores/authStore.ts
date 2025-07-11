@@ -146,6 +146,8 @@ interface AuthState {
     lastFetchAttempt: number | null;
     retryCount: number;
 
+    
+
     fetchRecentTracks: () => Promise<void>;
     resetRetryCount: () => void;
     
@@ -194,6 +196,9 @@ interface AuthState {
     
     getDisplayName: () => string;
     getProfileImage: () => string | undefined;
+
+    logoutSpotify: () => void;
+    checkTokenValidity: () => Promise<boolean>;
 }
 
 
@@ -887,6 +892,83 @@ export const useAuthStore = create<AuthState>()(
                 }
 
                 return undefined;
+            },
+
+            logoutSpotify: () => {
+                console.log('Logging out from Spotify...');
+                set(state => ({
+                    // Clear Spotify-specific data
+                    accessToken: null,
+                    refreshToken: null,
+                    expiresAt: null,
+                    spotifyId: null,
+                    spotifyUser: null,
+
+                    // Clear music data
+                    currentlyPlaying: null,
+                    recentTracks: [],
+                    topTracks: {
+                        short_term: [],
+                        medium_term: [],
+                        long_term: [],
+                    },
+
+                    // Reset loading states
+                    isLoadingTracks: {
+                        short_term: false,
+                        medium_term: false,
+                        long_term: false,
+                    },
+                    loadingCurrentTrack: false,
+                    loadingRecentTracks: false,
+
+                    // Reset error and retry state
+                    error: null,
+                    retryCount: 0,
+                    lastFetchAttempt: null,
+
+                    // Update linked status
+                    isLinked: false,
+
+                    // Keep Farcaster auth but update overall auth status
+                    isAuthenticated: !!state.farcaster,
+                    authMethod: state.farcaster ? 'farcaster' : null,
+                }));
+            },
+
+            checkTokenValidity: async () => {
+                const state = get();
+
+                if (!state.accessToken) {
+                    console.log('No access token to validate');
+                    return false;
+                }
+
+                if (state.isExpired()) {
+                    console.log('Token is expired according to timestamp');
+                    return false;
+                }
+
+                try {                    
+                    const response = await fetch('https://api.spotify.com/v1/me', {
+                        headers: {
+                            'Authorization': `Bearer ${state.accessToken}`,
+                        },
+                    });
+
+                    const isValid = response.ok;
+                    console.log(`Token validation result: ${isValid ? 'valid' : 'invalid'}`);
+
+                    if (!isValid && response.status === 401) {
+                        console.log('Token is invalid (401), clearing Spotify auth');
+                        get().logoutSpotify();
+                    }
+
+                    return isValid;
+                } catch (error) {
+                    console.error('Error validating token:', error);
+                    return false;
+                }
             },
         }),
         {
