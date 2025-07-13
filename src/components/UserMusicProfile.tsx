@@ -2,7 +2,7 @@
  */
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { UserMusicActivity } from "./UserMusicActivity";
 import { ProofVerifier } from "./ProofVerifier";
 import { Button } from "./ui/Button";
@@ -29,7 +29,23 @@ export function UserMusicProfile({
   const router = useRouter();
   const { isMiniApp } = useFrame();
 
-  // Check if user has Spotify connected if not provided
+  
+  const handleViewTimbraProfile = useCallback(async () => {
+    try {
+      const profileUrl = `/profile/${fid}`;
+
+      if (isMiniApp && typeof sdk?.actions?.openUrl === 'function') {
+        const baseUrl = process.env.NEXT_PUBLIC_URL || window.location.origin;
+        await sdk.actions.openUrl(`${baseUrl}${profileUrl}`);
+      } else {
+        router.push(profileUrl);
+      }
+    } catch (error) {
+      console.error('Failed to navigate to Timbra profile:', error);
+      router.push(`/profile/${fid}`);
+    }
+  }, [fid, isMiniApp, router]);
+  
   useEffect(() => {
     const checkSpotifyStatus = async () => {
       if (spotifyId) {
@@ -39,8 +55,7 @@ export function UserMusicProfile({
       }
 
       try {
-        setIsLoading(true);
-        // Call our API to check if the user has Spotify connected
+        setIsLoading(true);        
         const response = await fetch('/api/users/spotify-status', {
           method: 'POST',
           headers: {
@@ -65,9 +80,8 @@ export function UserMusicProfile({
 
     checkSpotifyStatus();
   }, [fid, spotifyId]);
-
-  // Handle sending invite to connect Spotify
-  const handleInvite = () => {
+  
+  const handleInvite = useCallback(() => {
     if (!username) return;
 
     const message = `Hey @${username}, check out Timbra! Connect your Spotify and share your music with friends on Farcaster.`;
@@ -81,7 +95,7 @@ export function UserMusicProfile({
     } else {
       window.open(`https://warpcast.com/~/compose?text=${encodeURIComponent(message)}&embeds=${encodeURIComponent(url)}`, '_blank');
     }
-  };
+  }, [username, isMiniApp]);
 
   if (isLoading) {
     return (
@@ -92,14 +106,28 @@ export function UserMusicProfile({
   }
 
   return (
-    <div className="space-y-4">
-      {/* Music profile header */}
+    <div className="space-y-4">      
       <div className="p-4 bg-purple-800/20 rounded-lg">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">Music Profile</h2>
-          
+        <div className="flex justify-between items-center mb-4">        
+          <div className="flex items-center gap-3">
+            <h2
+              className="text-lg font-semibold cursor-pointer hover:text-purple-400 transition-colors"
+              onClick={handleViewTimbraProfile}
+              title="View full Timbra profile"
+            >
+              Music Profile
+            </h2>            
+            <button
+              onClick={handleViewTimbraProfile}
+              className="w-6 h-6 bg-purple-600 rounded-full flex items-center justify-center hover:bg-purple-500 transition-colors"
+              title="View full Timbra profile"
+            >
+              <span className="text-xs font-bold text-white">T</span>
+            </button>
+          </div>
+
           {!hasSpotify && (
-            <Button 
+            <Button
               onClick={handleInvite}
               className="text-xs px-3 py-1 bg-green-600 hover:bg-green-700"
             >
@@ -113,43 +141,40 @@ export function UserMusicProfile({
             <div className="flex justify-center space-x-4 mb-4">
               <button
                 onClick={() => setViewMode('activity')}
-                className={`px-4 py-2 rounded-lg text-sm ${
-                  viewMode === 'activity' 
-                    ? 'bg-purple-600 text-white' 
+                className={`px-4 py-2 rounded-lg text-sm ${viewMode === 'activity'
+                    ? 'bg-purple-600 text-white'
                     : 'bg-purple-900/30 text-gray-300 hover:bg-purple-800/30'
-                }`}
+                  }`}
               >
                 Current Activity
               </button>
               <button
                 onClick={() => setViewMode('proofs')}
-                className={`px-4 py-2 rounded-lg text-sm ${
-                  viewMode === 'proofs' 
-                    ? 'bg-purple-600 text-white' 
+                className={`px-4 py-2 rounded-lg text-sm ${viewMode === 'proofs'
+                    ? 'bg-purple-600 text-white'
                     : 'bg-purple-900/30 text-gray-300 hover:bg-purple-800/30'
-                }`}
+                  }`}
               >
                 Verified Proofs
               </button>
             </div>
-
-            {/* Content based on view mode */}
+            
             {viewMode === 'activity' ? (
-              <UserMusicActivity 
-                fid={fid} 
-                username={username} 
-                spotifyId={spotifyId} 
+              <UserMusicActivity
+                fid={fid}
+                username={username}
+                spotifyId={spotifyId}
               />
             ) : (
               <div>
                 <div className="bg-purple-900/30 p-4 rounded-lg">
                   <h3 className="text-sm font-medium mb-2">TLSNotary Verified Proofs</h3>
-                  
+
                   <p className="text-sm text-gray-300 mb-4">
                     View cryptographically verified music data from {displayName || username || `FID: ${fid}`}.
                     These proofs ensure the authenticity of the user's music listening history.
                   </p>
-                  
+
                   {/* We would list available proofs here */}
                   <div className="text-center py-6">
                     <p className="text-gray-400 mb-4">No verified proofs available yet</p>
@@ -163,6 +188,15 @@ export function UserMusicProfile({
                 </div>
               </div>
             )}
+            
+            <div className="mt-4 pt-3 border-t border-purple-700/50 text-center">
+              <Button
+                onClick={handleViewTimbraProfile}
+                className="text-xs px-4 py-2 bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 border border-purple-600/50 transition-colors"
+              >
+                View Full Music Profile →
+              </Button>
+            </div>
           </>
         ) : (
           <div className="text-center py-6">
@@ -172,12 +206,22 @@ export function UserMusicProfile({
             <p className="text-sm text-gray-500 mb-4">
               Send them an invitation to connect and share their music taste
             </p>
-            <Button
-              onClick={handleInvite}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              Invite to Connect Spotify
-            </Button>
+            
+            <div className="flex gap-3 justify-center">
+              <Button
+                onClick={handleInvite}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                Invite to Connect Spotify
+              </Button>
+              
+              <Button
+                onClick={handleViewTimbraProfile}
+                className="bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 border border-purple-600/50"
+              >
+                View Timbra Profile
+              </Button>
+            </div>
           </div>
         )}
       </div>
