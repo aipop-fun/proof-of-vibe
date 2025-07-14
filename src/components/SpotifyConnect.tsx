@@ -25,7 +25,7 @@ export function SpotifyConnect({ onBack, isReconnecting = false }: SpotifyConnec
         ? generateReconnectUrl()
         : `${process.env.NEXT_PUBLIC_URL || window.location.origin}/api/auth/signin/spotify?source=${isMiniApp ? 'miniapp' : 'web'}&fid=${user?.fid || ''}`;
 
-    const handleConnectSpotify = () => {
+    const handleConnectSpotify = React.useCallback(() => {
         setIsLoading(true);
         setErrorMessage(null);
 
@@ -36,7 +36,7 @@ export function SpotifyConnect({ onBack, isReconnecting = false }: SpotifyConnec
             setErrorMessage('Failed to connect to Spotify. Please try again.');
             setIsLoading(false);
         }
-    };
+    }, [navigate, spotifyAuthUrl]);
     
     useEffect(() => {
         if (isReconnecting && !isLoading) {
