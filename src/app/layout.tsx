@@ -6,6 +6,7 @@ import Script from "next/script";
 
 import AdminWrapper from "~/components/admin/AdminWrapper";
 import { AuthInitializer } from "~/components/AuthInitializer";
+import { Analytics } from "@vercel/analytics/next"
 
 export const metadata: Metadata = {
   title: process.env.NEXT_PUBLIC_FRAME_NAME || "Timbra",
@@ -66,6 +67,7 @@ export default async function RootLayout({
           <AdminWrapper />
         </Providers>
         </AuthInitializer>
+        <Analytics/>
       </body>
     </html>
   );
