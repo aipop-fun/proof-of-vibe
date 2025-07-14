@@ -46,6 +46,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
     const [isFollowLoading, setIsFollowLoading] = useState(false);
     const [isInviteLoading, setIsInviteLoading] = useState(false);
     const [localFollowState, setLocalFollowState] = useState(user.isFollowing);
+
     
     if (!user || !user.fid || !user.username) {
         console.error('ProfileHeader: Invalid user data provided', user);
@@ -55,22 +56,18 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
             </div>
         );
     }
-    
-    const handleViewTimbraProfile = useCallback(async () => {
-        try {
-            const timbraProfileUrl = `/profile/${user.fid}`;
 
-            if (isMiniApp && typeof sdk?.actions?.openUrl === 'function') {
-                const baseUrl = process.env.NEXT_PUBLIC_URL || window.location.origin;
-                await sdk.actions.openUrl(`${baseUrl}${timbraProfileUrl}`);
-            } else {
-                router.push(timbraProfileUrl);
-            }
+    
+    const handleViewTimbraProfile = useCallback(() => {
+        try {
+            const timbraProfileUrl = `/profile/${user.fid}`;    
+            router.push(timbraProfileUrl);
         } catch (error) {
             console.error('Failed to navigate to Timbra profile:', error);            
             router.push(`/profile/${user.fid}`);
         }
-    }, [user.fid, isMiniApp, router]);
+    }, [user.fid, router]);
+
     
     const handleViewFarcasterProfile = useCallback(async () => {
         try {
@@ -88,29 +85,33 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
         }
     }, [user.fid, isMiniApp]);
 
-
+    
     const handleFollow = useCallback(async () => {
         if (!onFollowToggle || isFollowLoading) return;
 
         setIsFollowLoading(true);
         const newFollowState = !localFollowState;
+
         
         setLocalFollowState(newFollowState);
 
         try {
             const success = await onFollowToggle(user.fid, newFollowState);
-            if (!success) {                
+            if (!success) {
+        
                 setLocalFollowState(!newFollowState);
                 console.error('Follow action failed');
             }
         } catch (error) {
-            console.error('Error during follow action:', error);            
+            console.error('Error during follow action:', error);
+            // Revert on error
             setLocalFollowState(!newFollowState);
         } finally {
             setIsFollowLoading(false);
         }
     }, [onFollowToggle, isFollowLoading, localFollowState, user.fid]);
 
+    // Handle Spotify invitation with proper error handling
     const handleInvite = useCallback(async () => {
         if (isInviteLoading) return;
 
@@ -119,7 +120,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
         try {
             if (onInviteToSpotify) {
                 await onInviteToSpotify(user);
-            } else {                
+            } else {
+                // Default invitation behavior
                 const message = `Hey @${user.username}, check out Timbra! Connect your Spotify and share your music with friends on Farcaster.`;
                 const url = process.env.NEXT_PUBLIC_URL || "https://timbra.app";
 
@@ -134,12 +136,14 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                 }
             }
         } catch (error) {
-            console.error('Error sending invitation:', error);            
+            console.error('Error sending invitation:', error);
+            // Could show a toast notification here in a real app
         } finally {
             setIsInviteLoading(false);
         }
     }, [onInviteToSpotify, isInviteLoading, user, isMiniApp]);
 
+    // Format last active timestamp with proper error handling
     const formatLastActive = useCallback((timestamp?: number): string => {
         if (!timestamp || timestamp <= 0) return 'Unknown';
 
@@ -159,7 +163,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
         }
     }, []);
 
-    
+    // Format follower/following counts
     const formatCount = useCallback((count?: number): string => {
         if (count === undefined || count === null) return '0';
         if (count < 1000) return count.toString();
@@ -168,8 +172,10 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
     }, []);
 
     return (
-        <div className={`bg-purple-800/20 rounded-lg p-6 ${className}`}>         
-            <div className="flex items-start gap-4 mb-4">                
+        <div className={`bg-purple-800/20 rounded-lg p-6 ${className}`}>
+            {/* Main profile section */}
+            <div className="flex items-start gap-4 mb-4">
+                {/* ✅ Profile image - Navigate to Timbra profile */}
                 <div
                     className="relative w-20 h-20 rounded-full overflow-hidden cursor-pointer hover:opacity-80 transition-opacity flex-shrink-0 ring-2 ring-purple-600/30 hover:ring-purple-500/50"
                     onClick={handleViewTimbraProfile}
@@ -189,16 +195,18 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                         width={80}
                         height={80}
                         className="w-full h-full object-cover"
-                    />                    
+                    />
+                    {/* Timbra indicator overlay */}
                     <div className="absolute bottom-0 right-0 w-6 h-6 bg-purple-600 rounded-full flex items-center justify-center border-2 border-purple-900">
                         <span className="text-xs font-bold text-white">T</span>
                     </div>
                 </div>
 
-                
+                {/* User info */}
                 <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between mb-2">
-                        <div className="min-w-0 flex-1">                
+                        <div className="min-w-0 flex-1">
+                            {/* ✅ Display name - Navigate to Timbra profile */}
                             <h2
                                 className="text-xl font-bold text-white cursor-pointer hover:underline truncate"
                                 onClick={handleViewTimbraProfile}
@@ -217,7 +225,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                                     <span className="ml-2 text-sm text-purple-400 font-normal">(You)</span>
                                 )}
                             </h2>
-                           
+
+                            {/* ✅ Username - Navigate to Timbra profile */}
                             <p
                                 className="text-gray-300 text-sm truncate cursor-pointer hover:underline transition-colors hover:text-purple-400"
                                 onClick={handleViewTimbraProfile}
@@ -235,8 +244,10 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                             </p>
                             <p className="text-gray-400 text-xs">FID: {user.fid}</p>
                         </div>
-                        
-                        <div className="flex gap-2 ml-4 flex-shrink-0">                        
+
+                        {/* Action buttons */}
+                        <div className="flex gap-2 ml-4 flex-shrink-0">
+                            {/* ✅ Botão específico para Farcaster profile */}
                             {!isCurrentUser && (
                                 <Button
                                     onClick={handleViewFarcasterProfile}
@@ -251,7 +262,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                                     FC
                                 </Button>
                             )}
-                            
+
+                            {/* Spotify status indicator */}
                             {user.hasSpotify ? (
                                 <div className="flex items-center text-green-500" title="Spotify connected">
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -278,7 +290,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                                     )}
                                 </Button>
                             ) : null}
-                            
+
+                            {/* Follow/Unfollow button */}
                             {!isCurrentUser && localFollowState !== undefined && (
                                 <Button
                                     onClick={handleFollow}
@@ -304,13 +317,15 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                             )}
                         </div>
                     </div>
-                    
+
+                    {/* Bio */}
                     {user.bio && (
                         <p className="text-gray-300 text-sm mb-3 leading-relaxed break-words">
                             {user.bio}
                         </p>
                     )}
 
+                    {/* Last active */}
                     {user.lastActive && (
                         <p className="text-gray-400 text-xs mb-3">
                             Last active: {formatLastActive(user.lastActive)}
@@ -318,9 +333,11 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                     )}
                 </div>
             </div>
-            
+
+            {/* Stats section */}
             <div className="flex items-center justify-between pt-4 border-t border-purple-700/50">
                 <div className="flex gap-6">
+                    {/* Follower count */}
                     {user.followerCount !== undefined && (
                         <div className="text-center">
                             <div className="font-bold text-white text-lg">
@@ -329,7 +346,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                             <div className="text-gray-400 text-xs">Followers</div>
                         </div>
                     )}
-                    
+
+                    {/* Following count */}
                     {user.followingCount !== undefined && (
                         <div className="text-center">
                             <div className="font-bold text-white text-lg">
@@ -338,7 +356,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                             <div className="text-gray-400 text-xs">Following</div>
                         </div>
                     )}
-                    
+
+                    {/* Spotify status */}
                     <div className="text-center">
                         <div className={`font-bold text-lg ${user.hasSpotify ? 'text-green-400' : 'text-gray-400'}`}>
                             {user.hasSpotify ? '✓' : '✗'}
@@ -346,7 +365,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                         <div className="text-gray-400 text-xs">Spotify</div>
                     </div>
                 </div>
-                
+
+                {/* Verification badges */}
                 {user.verifiedAddresses && (
                     <div className="flex gap-2">
                         {user.verifiedAddresses.eth_addresses && user.verifiedAddresses.eth_addresses.length > 0 && (
@@ -362,7 +382,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                     </div>
                 )}
             </div>
-            
+
+            {/* Relationship status */}
             {!isCurrentUser && (user.isFollower || localFollowState) && (
                 <div className="flex gap-2 mt-3">
                     {user.isFollower && (

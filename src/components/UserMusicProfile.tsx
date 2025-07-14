@@ -29,23 +29,17 @@ export function UserMusicProfile({
   const router = useRouter();
   const { isMiniApp } = useFrame();
 
-  
-  const handleViewTimbraProfile = useCallback(async () => {
+  const handleViewTimbraProfile = useCallback(() => {
     try {
       const profileUrl = `/profile/${fid}`;
-
-      if (isMiniApp && typeof sdk?.actions?.openUrl === 'function') {
-        const baseUrl = process.env.NEXT_PUBLIC_URL || window.location.origin;
-        await sdk.actions.openUrl(`${baseUrl}${profileUrl}`);
-      } else {
-        router.push(profileUrl);
-      }
+      
+      router.push(profileUrl);
     } catch (error) {
-      console.error('Failed to navigate to Timbra profile:', error);
+      console.error('Failed to navigate to Timbra profile:', error);      
       router.push(`/profile/${fid}`);
     }
-  }, [fid, isMiniApp, router]);
-  
+  }, [fid, router]);
+
   useEffect(() => {
     const checkSpotifyStatus = async () => {
       if (spotifyId) {
@@ -80,7 +74,7 @@ export function UserMusicProfile({
 
     checkSpotifyStatus();
   }, [fid, spotifyId]);
-  
+
   const handleInvite = useCallback(() => {
     if (!username) return;
 
@@ -108,15 +102,16 @@ export function UserMusicProfile({
   return (
     <div className="space-y-4">      
       <div className="p-4 bg-purple-800/20 rounded-lg">
-        <div className="flex justify-between items-center mb-4">        
+        <div className="flex justify-between items-center mb-4">          
           <div className="flex items-center gap-3">
-            <h2
+            <h2 
               className="text-lg font-semibold cursor-pointer hover:text-purple-400 transition-colors"
               onClick={handleViewTimbraProfile}
               title="View full Timbra profile"
             >
               Music Profile
-            </h2>            
+            </h2>
+            
             <button
               onClick={handleViewTimbraProfile}
               className="w-6 h-6 bg-purple-600 rounded-full flex items-center justify-center hover:bg-purple-500 transition-colors"
@@ -125,9 +120,9 @@ export function UserMusicProfile({
               <span className="text-xs font-bold text-white">T</span>
             </button>
           </div>
-
+          
           {!hasSpotify && (
-            <Button
+            <Button 
               onClick={handleInvite}
               className="text-xs px-3 py-1 bg-green-600 hover:bg-green-700"
             >
@@ -141,41 +136,42 @@ export function UserMusicProfile({
             <div className="flex justify-center space-x-4 mb-4">
               <button
                 onClick={() => setViewMode('activity')}
-                className={`px-4 py-2 rounded-lg text-sm ${viewMode === 'activity'
-                    ? 'bg-purple-600 text-white'
+                className={`px-4 py-2 rounded-lg text-sm ${
+                  viewMode === 'activity' 
+                    ? 'bg-purple-600 text-white' 
                     : 'bg-purple-900/30 text-gray-300 hover:bg-purple-800/30'
-                  }`}
+                }`}
               >
                 Current Activity
               </button>
               <button
                 onClick={() => setViewMode('proofs')}
-                className={`px-4 py-2 rounded-lg text-sm ${viewMode === 'proofs'
-                    ? 'bg-purple-600 text-white'
+                className={`px-4 py-2 rounded-lg text-sm ${
+                  viewMode === 'proofs' 
+                    ? 'bg-purple-600 text-white' 
                     : 'bg-purple-900/30 text-gray-300 hover:bg-purple-800/30'
-                  }`}
+                }`}
               >
                 Verified Proofs
               </button>
             </div>
             
             {viewMode === 'activity' ? (
-              <UserMusicActivity
-                fid={fid}
-                username={username}
-                spotifyId={spotifyId}
+              <UserMusicActivity 
+                fid={fid} 
+                username={username} 
+                spotifyId={spotifyId} 
               />
             ) : (
               <div>
                 <div className="bg-purple-900/30 p-4 rounded-lg">
                   <h3 className="text-sm font-medium mb-2">TLSNotary Verified Proofs</h3>
-
+                  
                   <p className="text-sm text-gray-300 mb-4">
                     View cryptographically verified music data from {displayName || username || `FID: ${fid}`}.
                     These proofs ensure the authenticity of the user's music listening history.
                   </p>
-
-                  {/* We would list available proofs here */}
+                                    
                   <div className="text-center py-6">
                     <p className="text-gray-400 mb-4">No verified proofs available yet</p>
                     <Button
@@ -206,7 +202,7 @@ export function UserMusicProfile({
             <p className="text-sm text-gray-500 mb-4">
               Send them an invitation to connect and share their music taste
             </p>
-            
+                        
             <div className="flex gap-3 justify-center">
               <Button
                 onClick={handleInvite}

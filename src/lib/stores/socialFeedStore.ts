@@ -349,105 +349,97 @@ export const useSocialFeedStore = create<SocialFeedState>()(
                 }
             },
 
-            // Fetch detailed user profile with top tracks
             fetchUserProfile: async (fid: number) => {
-                const state = get();
-
-                // Check cache
-                const cached = state.userProfiles[fid];
-                if (cached && Date.now() - (cached.lastUpdated || 0) < CACHE_DURATION) {
-                    return cached;
-                }
-
-                // Set loading state for this user
-                set(state => ({
-                    userProfiles: {
-                        ...state.userProfiles,
-                        [fid]: {
-                            ...state.userProfiles[fid],
-                            isLoading: true
-                        }
-                    }
-                }));
-
                 try {
-                    // Fetch user info and top tracks in parallel
-                    const [userResponse, tracksResponse] = await Promise.all([
-                        fetch(`/api/neynar/user?fid=${fid}`),
-                        fetch(`/api/social/user-tracks?fid=${fid}`)
-                    ]);
+                    console.log('Fetching user profile for FID:', fid);
 
-                    if (!userResponse.ok) {
-                        throw new Error('Failed to fetch user profile');
+                    const response = await fetch(`/api/neynar/user/${fid}`);
+
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            console.log('User not found:', fid);
+                            return null;
+                        }
+                        throw new Error(`Failed to fetch user profile: ${response.status}`);
                     }
 
-                    const userData = await userResponse.json();
-                    const tracksData = tracksResponse.ok ? await tracksResponse.json() : null;
+                    const profileData = await response.json();
 
-                    const userProfile: UserProfile = {
-                        user: {
-                            fid: userData.user.fid,
-                            username: userData.user.username,
-                            displayName: userData.user.display_name || userData.user.username,
-                            pfpUrl: userData.user.pfp_url,
-                            hasSpotify: Boolean(tracksData),
-                            followerCount: userData.user.follower_count,
-                            followingCount: userData.user.following_count
-                        },
-                        topTracks: {
-                            short_term: tracksData?.topTracks?.short_term || [],
-                            medium_term: tracksData?.topTracks?.medium_term || [],
-                            long_term: tracksData?.topTracks?.long_term || []
-                        },
-                        recentTracks: tracksData?.recentTracks || [],
-                        isLoading: false,
-                        lastUpdated: Date.now()
-                    };
+                    console.log('Successfully fetched user profile:', {
+                        fid: profileData.user?.fid,
+                        username: profileData.user?.username,
+                        hasSpotify: profileData.user?.hasSpotify
+                    });
 
+                    
                     set(state => ({
                         userProfiles: {
                             ...state.userProfiles,
-                            [fid]: userProfile
+                            [fid]: profileData
                         }
                     }));
 
-                    return userProfile;
-
+                    return profileData;
                 } catch (error) {
                     console.error('Error fetching user profile:', error);
 
-                    // Set error state for this user
+                   
+                    const fallbackProfile = {
+                        user: {
+                            fid,
+                            username: `user${fid}`,
+                            displayName: `User ${fid}`,
+                            pfpUrl: undefined,
+                            bio: '',
+                            followerCount: 0,
+                            followingCount: 0,
+                            verifiedAddresses: {
+                                eth_addresses: [],
+                                sol_addresses: []
+                            },
+                            hasSpotify: false,
+                            lastActive: Date.now(),
+                            isFollowing: false,
+                            isFollower: false,
+                        },
+                        topTracks: {
+                            short_term: [],
+                            medium_term: [],
+                            long_term: []
+                        },
+                        recentTracks: [],
+                        isLoading: false
+                    };
+
+                    
                     set(state => ({
                         userProfiles: {
                             ...state.userProfiles,
-                            [fid]: {
-                                ...state.userProfiles[fid],
-                                isLoading: false
-                            }
+                            [fid]: fallbackProfile
                         }
                     }));
 
-                    return null;
+                    return fallbackProfile;
                 }
             },
 
-            // Get user's top tracks for specific time range
+            
             getUserTopTracks: async (fid: number, timeRange: TimeRange) => {
                 const profile = await get().fetchUserProfile(fid);
                 return profile?.topTracks[timeRange] || [];
             },
 
-            // Clear search results
+            
             clearSearch: () => {
                 set({ searchResults: [], searchQuery: '' });
             },
 
-            // Clear error
+            
             clearError: () => {
                 set({ error: null });
             },
 
-            // Invalidate all caches
+            
             invalidateCache: () => {
                 set({
                     lastFeedUpdate: 0,
@@ -458,15 +450,14 @@ export const useSocialFeedStore = create<SocialFeedState>()(
             }
         }),
         {
-            name: 'social-feed-store',
-            // Only persist non-sensitive data
+            name: 'social-feed-store',            
             partialize: (state) => ({
                 userProfiles: Object.fromEntries(
                     Object.entries(state.userProfiles).map(([fid, profile]) => [
                         fid,
                         {
                             ...profile,
-                            isLoading: false // Reset loading state on hydration
+                            isLoading: false 
                         }
                     ])
                 )

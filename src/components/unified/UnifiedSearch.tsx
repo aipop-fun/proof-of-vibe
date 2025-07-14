@@ -36,7 +36,8 @@ export const UnifiedSearch: React.FC<UnifiedSearchProps> = (props) => {
     const { validateAndParse } = useValidation();
     const router = useRouter();
     const { isMiniApp } = useFrame();
-    
+
+    // All hooks must be called before any conditional logic
     const [results, setResults] = useState<SearchResult | null>(null);
     const [isSearching, setIsSearching] = useState(false);
     const [activeTab, setActiveTab] = useState<'all' | 'users' | 'tracks'>('all');
@@ -46,28 +47,25 @@ export const UnifiedSearch: React.FC<UnifiedSearchProps> = (props) => {
         timeRange: 'all' as const,
     });
 
-
-    const viewTimbraProfile = useCallback(async (fid: number) => {
+    // ✅ CORREÇÃO: Navegação para perfil Timbra - SEMPRE usar router interno
+    const viewTimbraProfile = useCallback((fid: number) => {
         try {
             const profileUrl = `/profile/${fid}`;
 
-            if (isMiniApp && typeof sdk?.actions?.openUrl === 'function') {
-                const baseUrl = process.env.NEXT_PUBLIC_URL || window.location.origin;
-                await sdk.actions.openUrl(`${baseUrl}${profileUrl}`);
-            } else {
-                router.push(profileUrl);
-            }
+            // ✅ SEMPRE usar router.push para navegação interna no mini-app
+            router.push(profileUrl);
         } catch (error) {
-            console.error('Failed to navigate to Timbra profile:', error);            
+            console.error('Failed to navigate to Timbra profile:', error);
+            // Fallback também usa router interno
             router.push(`/profile/${fid}`);
         }
-    }, [isMiniApp, router]);
+    }, [router]);
 
-    
+    // ✅ CORREÇÃO: Navegação para Spotify
     const openSpotify = useCallback((uri?: string, fallbackSearch?: string) => {
         try {
             let spotifyUrl = '';
-            
+
             if (uri) {
                 spotifyUrl = uri.replace('spotify:', 'https://open.spotify.com/');
             } else if (fallbackSearch) {
@@ -104,7 +102,7 @@ export const UnifiedSearch: React.FC<UnifiedSearchProps> = (props) => {
 
             const { searchTypes, maxResults } = validatedProps;
 
-            
+            // Determine what to search based on searchTypes
             const searchUsers = searchTypes.includes('users') || searchTypes.includes('both');
             const searchTracks = searchTypes.includes('tracks') || searchTypes.includes('both');
 
@@ -131,7 +129,8 @@ export const UnifiedSearch: React.FC<UnifiedSearchProps> = (props) => {
             setIsSearching(false);
         }
     }, [props, filters, validateAndParse]);
-    
+
+    // ✅ CORREÇÃO: handleUserSelect agora usa viewTimbraProfile
     const handleUserSelect = useCallback((user: z.infer<typeof FarcasterUserSchema>) => {
         const validatedProps = validateAndParse(UnifiedSearchPropsSchema, props);
         if (!validatedProps) return;
@@ -139,23 +138,25 @@ export const UnifiedSearch: React.FC<UnifiedSearchProps> = (props) => {
         if (validatedProps.onResultSelect) {
             validatedProps.onResultSelect({ type: 'user', data: user });
         } else {
+            // ✅ CORREÇÃO: Usar viewTimbraProfile em vez de viewProfile
             viewTimbraProfile(user.fid);
         }
     }, [props, viewTimbraProfile, validateAndParse]);
 
-    
+    // ✅ CORREÇÃO: handleTrackSelect agora usa openSpotify corrigido
     const handleTrackSelect = useCallback((track: z.infer<typeof TrackSchema>) => {
         const validatedProps = validateAndParse(UnifiedSearchPropsSchema, props);
         if (!validatedProps) return;
 
         if (validatedProps.onResultSelect) {
             validatedProps.onResultSelect({ type: 'track', data: track });
-        } else {    
+        } else {
+            // ✅ CORREÇÃO: Usar openSpotify corrigido
             openSpotify(track.uri, `${track.title} ${track.artist}`);
         }
     }, [props, openSpotify, validateAndParse]);
 
-    
+    // Now validate props after all hooks are called
     const validatedProps = validateAndParse(UnifiedSearchPropsSchema, props);
     if (!validatedProps) return null;
 
