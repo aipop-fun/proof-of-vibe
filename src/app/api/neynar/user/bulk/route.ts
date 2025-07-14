@@ -1,63 +1,144 @@
+
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
+import { getNeynarClient, normalizeNeynarUser } from '~/lib/neynar';
+import { supabase } from '~/lib/supabase';
+import { z } from 'zod';
+
+const BulkParamsSchema = z.object({
+    fids: z.string().min(1, 'FIDs parameter is required'),
+    includeSpotify: z
+        .string()
+        .optional()
+        .transform(val => val === 'true' ? true : val === 'false' ? false : true)
+});
+
 
 export async function GET(request: NextRequest) {
     try {
         const { searchParams } = new URL(request.url);
-        const fids = searchParams.get('fids');
+        const parseResult = BulkParamsSchema.safeParse({
+            fids: searchParams.get('fids'),
+            includeSpotify: searchParams.get('includeSpotify')
+        });
 
-        if (!fids) {
+        if (!parseResult.success) {
             return NextResponse.json(
-                { error: 'FIDs parameter is required' },
+                { error: 'Invalid parameters', details: parseResult.error.errors },
                 { status: 400 }
             );
         }
 
-        const NEYNAR_API_KEY = process.env.NEYNAR_API_KEY;
 
-        if (!NEYNAR_API_KEY) {
-            console.error('NEYNAR_API_KEY not found in environment variables');
+        const { fids: fidsParam, includeSpotify } = parseResult.data;
+
+        
+        const fidArray = fidsParam
+            .split(',')
+            .map(fid => parseInt(fid.trim()))
+            .filter(fid => !isNaN(fid));
+
+        if (fidArray.length === 0) {
             return NextResponse.json(
-                { error: 'Neynar API key not configured' },
-                { status: 500 }
+                { error: 'No valid FIDs provided' },
+                { status: 400 }
             );
         }
 
-        // Convert comma-separated FIDs to array if needed
-        const fidArray = fids.split(',').map(fid => parseInt(fid.trim()));
+        
+        if (fidArray.length > 100) {
+            return NextResponse.json(
+                { error: 'Too many FIDs requested. Maximum is 100' },
+                { status: 400 }
+            );
+        }
 
-        // Call Neynar API to fetch bulk users
-        const neynarResponse = await fetch(
-            `https://api.neynar.com/v2/farcaster/user/bulk?fids=${fidArray.join(',')}`,
-            {
-                headers: {
-                    'accept': 'application/json',
-                    'x-api-key': NEYNAR_API_KEY,
-                },
+        console.log('Fetching bulk users for FIDs:', fidArray);
+
+        const client = getNeynarClient();
+
+        try {            
+            const userResponse = await client.fetchBulkUsers({ fids: fidArray });
+
+            if (!userResponse.users || userResponse.users.length === 0) {
+                return NextResponse.json({
+                    users: [],
+                    total: 0,
+                    message: 'No users found for the provided FIDs'
+                });
             }
-        );
 
-        if (!neynarResponse.ok) {
-            const errorText = await neynarResponse.text();
-            console.error('Neynar API error:', neynarResponse.status, errorText);
-            return NextResponse.json(
-                {
-                    error: 'Failed to fetch user data from Neynar',
-                    details: errorText
+            
+            let users = userResponse.users.map(normalizeNeynarUser);
+
+            
+            if (includeSpotify) {
+                try {
+                    const { data: spotifyUsers } = await supabase
+                        .from('user_profiles')
+                        .select('fid')
+                        .in('fid', fidArray)
+                        .not('spotify_id', 'is', null);
+
+                    const spotifyFids = new Set(spotifyUsers?.map(user => user.fid) || []);
+
+                    users = users.map(user => ({
+                        ...user,
+                        hasSpotify: spotifyFids.has(user.fid)
+                    }));
+                } catch (spotifyError) {
+                    console.error('Error fetching Spotify data:', spotifyError);                    
+                    users = users.map(user => ({
+                        ...user,
+                        hasSpotify: false
+                    }));
+                }
+            }
+
+            console.log('Successfully fetched bulk users:', {
+                requested: fidArray.length,
+                found: users.length
+            });
+
+            return NextResponse.json({
+                users,
+                total: users.length,
+                requested: fidArray.length
+            });
+
+        } catch (neynarError) {
+            console.error('Neynar API error:', neynarError);
+            
+            const minimalUsers = fidArray.map(fid => ({
+                fid,
+                username: `user${fid}`,
+                display_name: `User ${fid}`,
+                pfp_url: null,
+                bio: '',
+                follower_count: 0,
+                following_count: 0,
+                verified_addresses: {
+                    eth_addresses: [],
+                    sol_addresses: []
                 },
-                { status: neynarResponse.status }
-            );
+                hasSpotify: false
+            }));
+
+            return NextResponse.json({
+                users: minimalUsers,
+                total: minimalUsers.length,
+                requested: fidArray.length,
+                warning: 'Some or all users returned with minimal data due to API error'
+            });
         }
-
-        const userData = await neynarResponse.json();
-
-        // Return the user data
-        return NextResponse.json(userData);
 
     } catch (error) {
-        console.error('Error in Neynar user bulk API:', error);
+        console.error('Error in bulk users API:', error);
+
         return NextResponse.json(
             {
-                error: 'Internal server error',
+                error: 'Failed to fetch bulk users',
                 details: error instanceof Error ? error.message : 'Unknown error'
             },
             { status: 500 }

@@ -4,18 +4,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase, getUsersWithSpotify } from "~/lib/supabase";
 import { getSpotifyApiClient } from "~/lib/spotify-api";
 
-/**
- * Endpoint para buscar o feed de música em tempo real de todos os usuários conectados
- * Este endpoint agrega dados de usuários que conectaram suas contas do Spotify
- */
+
+
 export async function GET(request: NextRequest) {
     try {
-        // Extract query parameters
+
         const searchParams = request.nextUrl.searchParams;
         const limit = parseInt(searchParams.get("limit") || "20", 10);
         const cursor = searchParams.get("cursor") || undefined;
 
-        // Passo 1: Buscar todos os usuários que conectaram o Spotify
+
         const spotifyUsers = await getUsersWithSpotify();
 
         if (!spotifyUsers.length) {
@@ -25,21 +23,17 @@ export async function GET(request: NextRequest) {
             });
         }
 
-        // Passo 2: Para cada usuário com token de acesso, buscar o que está ouvindo
-        // Nota: Esta é uma simplificação - em um ambiente real, seria necessário
-        // ter uma forma de armazenar e renovar tokens de acesso para cada usuário
-        // Para este exemplo, vamos gerar dados simulados baseados nos usuários
 
         const listeningFeed = [];
 
         for (let i = 0; i < spotifyUsers.length && listeningFeed.length < limit; i++) {
             const user = spotifyUsers[i];
 
-            // Verificar se temos o fid e o spotify_id
+
+            
             if (!user.fid || !user.spotify_id) continue;
 
-            // Simular dados de faixas sendo ouvidas
-            // Em produção, você faria uma chamada real para a API do Spotify
+
             const simulatedTrack = {
                 id: `track-${i}`,
                 title: getRandomTrack(),
@@ -63,10 +57,9 @@ export async function GET(request: NextRequest) {
             });
         }
 
-        // Ordenar por timestamp, mais recentes primeiro
+        
         listeningFeed.sort((a, b) => b.timestamp - a.timestamp);
 
-        // Implementar paginação com cursor
         let startIndex = 0;
 
         if (cursor) {
@@ -75,7 +68,7 @@ export async function GET(request: NextRequest) {
                 const timestamp = decodedCursor.timestamp;
                 const id = decodedCursor.id;
 
-                // Encontrar o índice para começar (primeira entrada após o cursor)
+
                 const cursorIndex = listeningFeed.findIndex(item => item.timestamp < timestamp || (item.timestamp === timestamp && item.id > id));
 
                 if (cursorIndex >= 0) {
@@ -86,10 +79,10 @@ export async function GET(request: NextRequest) {
             }
         }
 
-        // Obter os itens para esta página
+
+        
         const items = listeningFeed.slice(startIndex, startIndex + limit);
 
-        // Gerar o próximo cursor
         let nextCursor = null;
 
         if (startIndex + limit < listeningFeed.length) {
@@ -119,7 +112,6 @@ export async function GET(request: NextRequest) {
     }
 }
 
-// Funções auxiliares para gerar dados simulados
 function getRandomTrack() {
     const tracks = [
         "Blinding Lights", "Starboy", "Save Your Tears",

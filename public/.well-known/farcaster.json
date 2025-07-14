@@ -4,15 +4,32 @@
         "payload": "eyJkb21haW4iOiJ0aW1icmEuYWlwb3AuZnVuIn0",
         "signature": "MHgzZWUzN2ZhY2FhOWM2MjEyMDMzNjhmOTRjNDE0YjYyMTY4NzYzMGFjMDdjYTRlZTNiOTk3MDQ4MGY0MGU3YjMwNzE3NzFhMWQzYjk5NDc3ZjA3NDMwYmYxYTJlNTg5ZjE4NDljNjdmY2M4NWFlMDJhNWQwOWE3MTI5NjIyZGUwYjFi"
     },
-    "frame": {
+    "miniapp": {
         "version": "1",
         "name": "Timbra",
         "iconUrl": "https://timbra.aipop.fun/icon.png",
-        "homeUrl": "https://timbra.aipop.fun",
-        "imageUrl": "https://timbra.aipop.fun/image.png",
-        "buttonTitle": "Share your vibe",
         "splashImageUrl": "https://timbra.aipop.fun/splash.png",
         "splashBackgroundColor": "#8A2BE2",
-        "webhookUrl": "https://timbra.aipop.fun/api/webhook"
+        "homeUrl": "https://timbra.aipop.fun",
+        "webhookUrl": "https://timbra.aipop.fun/api/webhook",
+        "subtitle": "Share music with friends",
+        "description": "Connect your Spotify and share your music taste with friends on Farcaster. Discover what your network is listening to.",
+        "screenshotUrls": [
+            "https://timbra.aipop.fun/screenshot1.png",
+            "https://timbra.aipop.fun/screenshot2.png",
+            "https://timbra.aipop.fun/screenshot3.png"
+        ],
+        "primaryCategory": "social",
+        "tags": [
+            "music",
+            "spotify",
+            "social",
+            "discovery"
+        ],
+        "heroImageUrl": "https://timbra.aipop.fun/hero.png",
+        "tagline": "Your music vibe on Farcaster",
+        "ogTitle": "Timbra",
+        "ogDescription": "Connect Spotify and share your music taste with friends on Farcaster.",
+        "ogImageUrl": "https://timbra.aipop.fun/og.png"
     }
 }
