@@ -33,8 +33,6 @@ export function SpotifyReconnectHandler({
 
     
     const needsReconnect = isAuthenticated && spotifyId && (!accessToken || isExpired());
-
-    
     const getReconnectUrl = () => {
         const baseUrl = process.env.NEXT_PUBLIC_URL || window.location.origin;
         const params = new URLSearchParams({
@@ -45,11 +43,11 @@ export function SpotifyReconnectHandler({
         return `${baseUrl}/api/auth/signin/spotify?${params.toString()}`;
     };
 
-    
     const handleReconnect = async () => {
         setIsReconnecting(true);
         
         try {
+
             const tokenRefreshed = await refreshTokenIfNeeded();
             
             if (tokenRefreshed) {
@@ -57,21 +55,23 @@ export function SpotifyReconnectHandler({
                 setIsReconnecting(false);
                 return;
             }
-            
+
             if (onReconnectClick) {
                 onReconnectClick();
             } else {
                 const reconnectUrl = getReconnectUrl();
                 
+
                 if (isMiniApp) {            
                     window.location.href = reconnectUrl;
                 } else {            
+
                     window.location.href = reconnectUrl;
                 }
             }
         } catch (error) {
             console.error('Error during reconnection:', error);
-            
+
             clearAuth();
             const reconnectUrl = getReconnectUrl();
             window.location.href = reconnectUrl;
@@ -80,10 +80,10 @@ export function SpotifyReconnectHandler({
             setLastAttempt(Date.now());
         }
     };
-
     
     useEffect(() => {
         if (needsReconnect && !lastAttempt && !isReconnecting) {    
+
             const timeoutId = setTimeout(() => {
                 console.log('Auto-attempting Spotify reconnection...');
                 handleReconnect();
@@ -91,9 +91,9 @@ export function SpotifyReconnectHandler({
 
             return () => clearTimeout(timeoutId);
         }
+
     }, [needsReconnect, lastAttempt, isReconnecting, handleReconnect]);
 
-    
     if (!needsReconnect) {
         return null;
     }
@@ -131,7 +131,7 @@ export function SpotifyReconnectHandler({
         </Button>
     );
 
-    
+
     switch (variant) {
         case 'modal':
             return (

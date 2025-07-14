@@ -8,11 +8,13 @@ import { SearchBar } from '../SearchBar';
 import { UserCard } from '../UserCard';
 import { MusicBase } from '../music/MusicBase';
 import { LoadingState } from '../ui/LoadingStates';
+
 import { useValidation } from '~/lib/hooks/useCommon';
 import { FarcasterUserSchema, TrackSchema } from '~/lib/schemas';
 import { useRouter } from 'next/navigation';
 import { useFrame } from '~/components/providers/FrameProvider';
 import sdk from '@farcaster/frame-sdk';
+
 
 const UnifiedSearchPropsSchema = z.object({
     searchTypes: z.array(z.enum(['users', 'tracks', 'both'])).default(['both']),
@@ -37,7 +39,8 @@ export const UnifiedSearch: React.FC<UnifiedSearchProps> = (props) => {
     const router = useRouter();
     const { isMiniApp } = useFrame();
 
-    // All hooks must be called before any conditional logic
+
+
     const [results, setResults] = useState<SearchResult | null>(null);
     const [isSearching, setIsSearching] = useState(false);
     const [activeTab, setActiveTab] = useState<'all' | 'users' | 'tracks'>('all');
@@ -47,21 +50,18 @@ export const UnifiedSearch: React.FC<UnifiedSearchProps> = (props) => {
         timeRange: 'all' as const,
     });
 
-    // ✅ CORREÇÃO: Navegação para perfil Timbra - SEMPRE usar router interno
+
     const viewTimbraProfile = useCallback((fid: number) => {
         try {
             const profileUrl = `/profile/${fid}`;
-
-            // ✅ SEMPRE usar router.push para navegação interna no mini-app
             router.push(profileUrl);
         } catch (error) {
             console.error('Failed to navigate to Timbra profile:', error);
-            // Fallback também usa router interno
             router.push(`/profile/${fid}`);
         }
     }, [router]);
 
-    // ✅ CORREÇÃO: Navegação para Spotify
+
     const openSpotify = useCallback((uri?: string, fallbackSearch?: string) => {
         try {
             let spotifyUrl = '';
@@ -85,6 +85,7 @@ export const UnifiedSearch: React.FC<UnifiedSearchProps> = (props) => {
         }
     }, [isMiniApp]);
 
+
     const performSearch = useCallback(async (query: string) => {
         if (!query.trim()) {
             setResults(null);
@@ -102,7 +103,7 @@ export const UnifiedSearch: React.FC<UnifiedSearchProps> = (props) => {
 
             const { searchTypes, maxResults } = validatedProps;
 
-            // Determine what to search based on searchTypes
+
             const searchUsers = searchTypes.includes('users') || searchTypes.includes('both');
             const searchTracks = searchTypes.includes('tracks') || searchTypes.includes('both');
 
@@ -130,7 +131,7 @@ export const UnifiedSearch: React.FC<UnifiedSearchProps> = (props) => {
         }
     }, [props, filters, validateAndParse]);
 
-    // ✅ CORREÇÃO: handleUserSelect agora usa viewTimbraProfile
+
     const handleUserSelect = useCallback((user: z.infer<typeof FarcasterUserSchema>) => {
         const validatedProps = validateAndParse(UnifiedSearchPropsSchema, props);
         if (!validatedProps) return;
@@ -138,12 +139,11 @@ export const UnifiedSearch: React.FC<UnifiedSearchProps> = (props) => {
         if (validatedProps.onResultSelect) {
             validatedProps.onResultSelect({ type: 'user', data: user });
         } else {
-            // ✅ CORREÇÃO: Usar viewTimbraProfile em vez de viewProfile
             viewTimbraProfile(user.fid);
         }
     }, [props, viewTimbraProfile, validateAndParse]);
 
-    // ✅ CORREÇÃO: handleTrackSelect agora usa openSpotify corrigido
+
     const handleTrackSelect = useCallback((track: z.infer<typeof TrackSchema>) => {
         const validatedProps = validateAndParse(UnifiedSearchPropsSchema, props);
         if (!validatedProps) return;
@@ -151,12 +151,11 @@ export const UnifiedSearch: React.FC<UnifiedSearchProps> = (props) => {
         if (validatedProps.onResultSelect) {
             validatedProps.onResultSelect({ type: 'track', data: track });
         } else {
-            // ✅ CORREÇÃO: Usar openSpotify corrigido
             openSpotify(track.uri, `${track.title} ${track.artist}`);
         }
     }, [props, openSpotify, validateAndParse]);
 
-    // Now validate props after all hooks are called
+
     const validatedProps = validateAndParse(UnifiedSearchPropsSchema, props);
     if (!validatedProps) return null;
 

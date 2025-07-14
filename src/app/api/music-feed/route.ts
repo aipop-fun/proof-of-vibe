@@ -5,6 +5,7 @@ import { supabase, getUsersWithSpotify } from "~/lib/supabase";
 import { getSpotifyApiClient } from "~/lib/spotify-api";
 
 
+
 export async function GET(request: NextRequest) {
     try {
 
@@ -22,15 +23,17 @@ export async function GET(request: NextRequest) {
             });
         }
 
+
         const listeningFeed = [];
 
         for (let i = 0; i < spotifyUsers.length && listeningFeed.length < limit; i++) {
             const user = spotifyUsers[i];
 
+
             
             if (!user.fid || !user.spotify_id) continue;
 
-                        
+
             const simulatedTrack = {
                 id: `track-${i}`,
                 title: getRandomTrack(),
@@ -57,7 +60,6 @@ export async function GET(request: NextRequest) {
         
         listeningFeed.sort((a, b) => b.timestamp - a.timestamp);
 
-        
         let startIndex = 0;
 
         if (cursor) {
@@ -66,7 +68,7 @@ export async function GET(request: NextRequest) {
                 const timestamp = decodedCursor.timestamp;
                 const id = decodedCursor.id;
 
-                
+
                 const cursorIndex = listeningFeed.findIndex(item => item.timestamp < timestamp || (item.timestamp === timestamp && item.id > id));
 
                 if (cursorIndex >= 0) {
@@ -77,10 +79,10 @@ export async function GET(request: NextRequest) {
             }
         }
 
+
         
         const items = listeningFeed.slice(startIndex, startIndex + limit);
 
-        
         let nextCursor = null;
 
         if (startIndex + limit < listeningFeed.length) {
@@ -109,7 +111,6 @@ export async function GET(request: NextRequest) {
         );
     }
 }
-
 
 function getRandomTrack() {
     const tracks = [

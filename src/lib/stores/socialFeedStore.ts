@@ -423,23 +423,20 @@ export const useSocialFeedStore = create<SocialFeedState>()(
                 }
             },
 
-            
+
             getUserTopTracks: async (fid: number, timeRange: TimeRange) => {
                 const profile = await get().fetchUserProfile(fid);
                 return profile?.topTracks[timeRange] || [];
             },
-
-            
+           
             clearSearch: () => {
                 set({ searchResults: [], searchQuery: '' });
             },
 
-            
             clearError: () => {
                 set({ error: null });
             },
 
-            
             invalidateCache: () => {
                 set({
                     lastFeedUpdate: 0,

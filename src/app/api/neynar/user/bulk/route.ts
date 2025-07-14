@@ -1,3 +1,4 @@
+
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server';
@@ -13,6 +14,7 @@ const BulkParamsSchema = z.object({
         .transform(val => val === 'true' ? true : val === 'false' ? false : true)
 });
 
+
 export async function GET(request: NextRequest) {
     try {
         const { searchParams } = new URL(request.url);
@@ -27,6 +29,7 @@ export async function GET(request: NextRequest) {
                 { status: 400 }
             );
         }
+
 
         const { fids: fidsParam, includeSpotify } = parseResult.data;
 

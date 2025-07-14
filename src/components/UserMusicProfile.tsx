@@ -2,6 +2,7 @@
  */
 "use client";
 
+
 import { useState, useEffect, useCallback } from "react";
 import { UserMusicActivity } from "./UserMusicActivity";
 import { ProofVerifier } from "./ProofVerifier";
@@ -29,6 +30,7 @@ export function UserMusicProfile({
   const router = useRouter();
   const { isMiniApp } = useFrame();
 
+
   const handleViewTimbraProfile = useCallback(() => {
     try {
       const profileUrl = `/profile/${fid}`;
@@ -49,7 +51,9 @@ export function UserMusicProfile({
       }
 
       try {
+
         setIsLoading(true);        
+
         const response = await fetch('/api/users/spotify-status', {
           method: 'POST',
           headers: {
@@ -75,7 +79,9 @@ export function UserMusicProfile({
     checkSpotifyStatus();
   }, [fid, spotifyId]);
 
+
   const handleInvite = useCallback(() => {
+
     if (!username) return;
 
     const message = `Hey @${username}, check out Timbra! Connect your Spotify and share your music with friends on Farcaster.`;
@@ -89,7 +95,9 @@ export function UserMusicProfile({
     } else {
       window.open(`https://warpcast.com/~/compose?text=${encodeURIComponent(message)}&embeds=${encodeURIComponent(url)}`, '_blank');
     }
+
   }, [username, isMiniApp]);
+
 
   if (isLoading) {
     return (
@@ -100,6 +108,7 @@ export function UserMusicProfile({
   }
 
   return (
+
     <div className="space-y-4">      
       <div className="p-4 bg-purple-800/20 rounded-lg">
         <div className="flex justify-between items-center mb-4">          
@@ -120,6 +129,7 @@ export function UserMusicProfile({
               <span className="text-xs font-bold text-white">T</span>
             </button>
           </div>
+
           
           {!hasSpotify && (
             <Button 
@@ -155,7 +165,7 @@ export function UserMusicProfile({
                 Verified Proofs
               </button>
             </div>
-            
+
             {viewMode === 'activity' ? (
               <UserMusicActivity 
                 fid={fid} 
@@ -171,7 +181,7 @@ export function UserMusicProfile({
                     View cryptographically verified music data from {displayName || username || `FID: ${fid}`}.
                     These proofs ensure the authenticity of the user's music listening history.
                   </p>
-                                    
+
                   <div className="text-center py-6">
                     <p className="text-gray-400 mb-4">No verified proofs available yet</p>
                     <Button
@@ -184,6 +194,7 @@ export function UserMusicProfile({
                 </div>
               </div>
             )}
+
             
             <div className="mt-4 pt-3 border-t border-purple-700/50 text-center">
               <Button
@@ -193,6 +204,7 @@ export function UserMusicProfile({
                 View Full Music Profile →
               </Button>
             </div>
+
           </>
         ) : (
           <div className="text-center py-6">
@@ -202,6 +214,7 @@ export function UserMusicProfile({
             <p className="text-sm text-gray-500 mb-4">
               Send them an invitation to connect and share their music taste
             </p>
+
                         
             <div className="flex gap-3 justify-center">
               <Button
@@ -218,6 +231,7 @@ export function UserMusicProfile({
                 View Timbra Profile
               </Button>
             </div>
+
           </div>
         )}
       </div>

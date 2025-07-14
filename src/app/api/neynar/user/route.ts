@@ -6,11 +6,13 @@ import { z } from 'zod';
 import { getNeynarClient, normalizeNeynarUser } from '~/lib/neynar';
 
 
+
 async function searchNeynarUsersDirectly(query: string, limit: number) {
   const NEYNAR_API_KEY = process.env.NEYNAR_API_KEY;
   if (!NEYNAR_API_KEY) {
     throw new Error('NEYNAR_API_KEY is not configured on the server.');
   }
+
 
   const url = `https://api.neynar.com/v2/farcaster/user/search?q=${encodeURIComponent(query)}&limit=${limit}`;
   const response = await fetch(url, {
@@ -21,6 +23,7 @@ async function searchNeynarUsersDirectly(query: string, limit: number) {
   });
 
   if (!response.ok) {
+
     const errorData = await response.json().catch(() => ({
       message: `API error with status ${response.status}`
     }));
@@ -38,6 +41,7 @@ async function searchNeynarUsersDirectly(query: string, limit: number) {
 
 const SearchParamsSchema = z.object({
   q: z.string().min(1, 'Query parameter is required'),
+
   limit: z.coerce.number().min(1).max(50).default(20),
   hasSpotify: z
     .string()
@@ -105,6 +109,7 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
+
 
     const { q: query, limit, hasSpotify, includeFollowingData } = parseResult.data;
     const currentUserFid = getCurrentUserFid(request);
@@ -212,6 +217,7 @@ export async function GET(request: NextRequest) {
 
     const status = error?.response?.status || 500;
     let errorMessage = 'Failed to search users';
+
 
     if (error?.response?.data?.message) {
       errorMessage = error.response.data.message;
