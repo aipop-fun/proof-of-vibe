@@ -10,7 +10,7 @@ import { ShareCard } from '~/components/ShareCard';
 import { useFrame } from '~/components/providers/FrameProvider';
 import { listeningHistoryService } from '~/lib/services/listeningHistoryService';
 import Head from 'next/head';
-import sdk from "@farcaster/frame-sdk";
+import sdk from "@farcaster/miniapp-sdk";
 
 interface TrackData {
     id: string;
@@ -190,7 +190,7 @@ export default function ShareTrackPage() {
     // Create the frame embed JSON for this specific share page
     const frameEmbed = {
         version: "next",
-        imageUrl: track?.albumArt || `${baseUrl}/opengraph-image`,
+        imageUrl: track?.albumArt || `${baseUrl}/image.png`,
         button: {
             title: "🎵 Open App",
             action: {

@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '~/lib/stores/authStore';
 import { useFrame } from '~/components/providers/FrameProvider';
-import sdk from '@farcaster/frame-sdk';
+import sdk from '@farcaster/miniapp-sdk';
 
 export function UserProfile() {
     const {

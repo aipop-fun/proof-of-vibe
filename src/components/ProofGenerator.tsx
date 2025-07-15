@@ -4,7 +4,7 @@ import { useFrame } from "./providers/FrameProvider";
 import { Button } from "~/components/ui/Button";
 import { useProofGeneration } from "~/hooks/useProofManagement";
 import { Alert, ProofCard } from "~/components/ui/ProofCard";
-import sdk from "@farcaster/frame-sdk";
+import sdk from "@farcaster/miniapp-sdk";
 
 interface ProofGeneratorProps {
   endpoint: string;

@@ -10,7 +10,7 @@ import { useFrame } from '~/components/providers/FrameProvider';
 import { useAuthStore, type TimeRange } from '~/lib/stores/authStore';
 import { SpotifyImage } from '~/components/SpotifyImage';
 import { NavigationHelper } from '~/lib/utils/navigation';
-import sdk from "@farcaster/frame-sdk";
+import sdk from "@farcaster/miniapp-sdk";
 import { formatDuration } from '~/lib/utils';
 
 type ResultsType = 'top-tracks' | 'currently-playing' | 'vibe-match';
@@ -129,7 +129,7 @@ export default function ResultsPage() {
     // Generate page title and description based on results type
     let title = 'My Music Results - Timbra';
     let description = 'Check out my music taste on Timbra!';
-    let imageUrl = `${baseUrl}/opengraph-image`;
+    let imageUrl = `${baseUrl}/image.png`;
     let shareMessage = '🎵 Check out my music taste on Timbra!';
 
     // Customize content based on the results type

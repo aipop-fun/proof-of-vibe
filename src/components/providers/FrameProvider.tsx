@@ -1,187 +1,137 @@
 "use client";
 
-import { useEffect, useState, useCallback, createContext, useContext } from "react";
-import sdk, {
-  type Context,
-  type FrameNotificationDetails,
-  AddFrame
-} from "@farcaster/frame-sdk";
-import React from "react";
-import { isFarcasterMiniApp } from "~/lib/splashScreen";
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { sdk } from '@farcaster/miniapp-sdk';
+
+
+interface MiniAppContext {
+  user: {
+    fid: number;
+    username?: string;
+    displayName?: string;
+    pfpUrl?: string;
+  };
+  location?: {
+    type: string;
+    [key: string]: unknown;
+  };
+  client: {
+    clientFid: number;
+    added: boolean;
+    safeAreaInsets?: {
+      top: number;
+      bottom: number;
+      left: number;
+      right: number;
+    };
+    notificationDetails?: {
+      url: string;
+      token: string;
+    };
+  };
+}
 
 interface FrameContextType {
   isSDKLoaded: boolean;
-  context: Context.FrameContext | undefined;
-  added: boolean;
-  notificationDetails: FrameNotificationDetails | null;
-  lastEvent: string;
   isMiniApp: boolean;
-  addFrame: () => Promise<AddFrame.AddFrameResult>;
-  addFrameResult: string;
+  context: MiniAppContext | null;
+  added: boolean;
+  addFrame: () => Promise<void>;
+  isLoading: boolean;
+  error: string | null;
+  notificationDetails?: {
+    url: string;
+    token: string;
+  } | null;
 }
 
-const FrameContext = createContext<FrameContextType | undefined>(undefined);
+const FrameContext = createContext<FrameContextType>({
+  isSDKLoaded: false,
+  isMiniApp: false,
+  context: null,
+  added: false,
+  addFrame: async () => { },
+  isLoading: true,
+  error: null,
+  notificationDetails: null,
+});
 
-/**
- * Custom hook to access frame context and functions
- */
-export function useFrame() {
-  const context = useContext(FrameContext);
-  if (!context) {
-    throw new Error('useFrame must be used within a FrameProvider');
-  }
-  return context;
-}
-
-/**
- * Frame Provider component to manage Farcaster Frame SDK
- * Handles initialization, events, and provides context to children
- */
 export function FrameProvider({ children }: { children: React.ReactNode }) {
   const [isSDKLoaded, setIsSDKLoaded] = useState(false);
-  const [context, setContext] = useState<Context.FrameContext>();
-  const [added, setAdded] = useState(false);
-  const [notificationDetails, setNotificationDetails] = useState<FrameNotificationDetails | null>(null);
-  const [lastEvent, setLastEvent] = useState("");
-  const [addFrameResult, setAddFrameResult] = useState("");
   const [isMiniApp, setIsMiniApp] = useState(false);
+  const [context, setContext] = useState<MiniAppContext | null>(null);
+  const [added, setAdded] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notificationDetails, setNotificationDetails] = useState<{ url: string; token: string } | null>(null);
 
-  /**
-   * Function to add the frame to the client
-   */
-  const addFrame = useCallback(async () => {
-    try {
-      setAddFrameResult("");
-
-      // Call the SDK action to add the frame
-      const result = await sdk.actions.addFrame();
-
-      if (result.notificationDetails) {
-        setNotificationDetails(result.notificationDetails);
-        setAdded(true);
-
-        // Store notification token if needed
-        console.log("Frame added with notification details", result.notificationDetails);
-
-        // Set the result message
-        setAddFrameResult("Frame successfully added!");
-      }
-
-      return result;
-    } catch (error) {
-      if (error instanceof AddFrame.RejectedByUser) {
-        setAddFrameResult(`User rejected adding the frame: ${error.message}`);
-      } else if (error instanceof AddFrame.InvalidDomainManifest) {
-        setAddFrameResult(`Invalid domain manifest: ${error.message}`);
-      } else {
-        setAddFrameResult(`Error adding frame: ${error}`);
-      }
-      console.error("Error adding frame:", error);
-      throw error;
-    }
-  }, []);
-
-  // Initialize the SDK and set up event listeners
   useEffect(() => {
-    const load = async () => {
+    const initializeSDK = async () => {
       try {
-        // Check if the SDK is already initialized
-        if (isSDKLoaded) return;
-
-        // Check if running in Farcaster mini app environment
-        const miniAppDetected = isFarcasterMiniApp();
-        setIsMiniApp(miniAppDetected);
-
-        // Get context from SDK
-        try {
-          const frameContext = await sdk.context;
-
-          if (frameContext) {
-            setContext(frameContext);
-
-            // Check if the app is already added
-            if (frameContext?.client?.added) {
-              setAdded(true);
-              if (frameContext.client.notificationDetails) {
-                setNotificationDetails(frameContext.client.notificationDetails);
-              }
-            }
-          }
-        } catch (contextError) {
-          console.warn("Non-critical error getting frame context:", contextError);
-          // This may fail in non-mini-app contexts, which is fine
-        }
-
-        // Mark SDK as loaded
+        setIsLoading(true);
+        setError(null);
+        
+        const miniAppResult = await sdk.isInMiniApp();
+        setIsMiniApp(miniAppResult);
         setIsSDKLoaded(true);
 
-        // Set up event listeners
-        sdk.on("frameAdded", ({ notificationDetails }) => {
-          console.log("Frame added", notificationDetails);
-          setAdded(true);
-          setNotificationDetails(notificationDetails ?? null);
-          setLastEvent("Frame added");
-        });
+        if (miniAppResult) {
+          console.log("Running in Mini App context");
 
-        sdk.on("frameAddRejected", ({ reason }) => {
-          console.log("Frame add rejected", reason);
-          setAdded(false);
-          setLastEvent(`Frame add rejected: ${reason}`);
-        });
+          try {            
+            const contextData = await sdk.context;
+            setContext(contextData);
+          
+            setAdded(contextData?.client?.added || false);
 
-        sdk.on("frameRemoved", () => {
-          console.log("Frame removed");
-          setAdded(false);
-          setNotificationDetails(null);
-          setLastEvent("Frame removed");
-        });
+            setNotificationDetails(contextData?.client?.notificationDetails || null);
 
-        sdk.on("notificationsEnabled", ({ notificationDetails }) => {
-          console.log("Notifications enabled", notificationDetails);
-          setNotificationDetails(notificationDetails ?? null);
-          setLastEvent("Notifications enabled");
-        });
-
-        sdk.on("notificationsDisabled", () => {
-          console.log("Notifications disabled");
-          setNotificationDetails(null);
-          setLastEvent("Notifications disabled");
-        });
-
-        // Note: We no longer call sdk.actions.ready() here
-        // AppLoader will take care of that at the appropriate time
-      } catch (error) {
-        console.error("Error initializing Frame SDK:", error);
+            console.log("Mini App context loaded:", contextData);
+          } catch (contextError) {
+            console.warn("Could not load Mini App context:", contextError);            
+          }
+        } else {
+          console.log("Running in regular web browser");
+        }
+      } catch (err) {
+        console.error("Error initializing Mini App SDK:", err);
+        setError(err instanceof Error ? err.message : 'Failed to initialize SDK');
+        setIsMiniApp(false);
+        setIsSDKLoaded(false);
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    if (typeof window !== 'undefined' && !isSDKLoaded) {
-      console.log("Loading Frame SDK");
-      load();
+    initializeSDK();
+  }, []);
 
-      return () => {
-        // Clean up event listeners on unmount
-        if (sdk) {
-          try {
-            sdk.removeAllListeners();
-          } catch (error) {
-            console.warn("Error removing listeners:", error);
-          }
-        }
-      };
+  
+  const addFrame = async () => {
+    if (!isMiniApp) {
+      console.warn("addMiniApp can only be called in Mini App context");
+      return;
     }
-  }, [isSDKLoaded]);
 
-  // Context value to be provided to child components
+    try {      
+      await sdk.actions.addMiniApp();
+      setAdded(true);
+      console.log("Mini App added successfully");
+    } catch (error) {
+      console.error("Error adding Mini App:", error);
+      throw error;
+    }
+  };
+
   const value: FrameContextType = {
     isSDKLoaded,
+    isMiniApp,
     context,
     added,
-    notificationDetails,
-    lastEvent,
-    isMiniApp,
     addFrame,
-    addFrameResult
+    isLoading,
+    error,
+    notificationDetails,
   };
 
   return (
@@ -189,4 +139,13 @@ export function FrameProvider({ children }: { children: React.ReactNode }) {
       {children}
     </FrameContext.Provider>
   );
+}
+
+
+export function useFrame(): FrameContextType {
+  const context = useContext(FrameContext);
+  if (!context) {
+    throw new Error("useFrame must be used within a FrameProvider");
+  }
+  return context;
 }

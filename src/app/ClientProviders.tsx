@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useEffect, useState } from "react";
@@ -6,13 +5,7 @@ import { Session } from "next-auth";
 import { Providers } from "~/app/providers";
 import { AuthKitProvider } from '@farcaster/auth-kit';
 import '@farcaster/auth-kit/styles.css';
-
-
-declare global {
-    interface Window {
-        FrameSDK?: any;
-    }
-}
+import { sdk } from '@farcaster/miniapp-sdk';
 
 export function ClientProviders({
     children,
@@ -24,44 +17,23 @@ export function ClientProviders({
     const [isMiniApp, setIsMiniApp] = useState<boolean | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    
     useEffect(() => {
         async function checkEnvironment() {
             try {
                 
+                const miniAppResult = await sdk.isInMiniApp();
+                setIsMiniApp(miniAppResult);
 
-                const inIframe = window !== window.parent;
-                const url = new URL(window.location.href);
-                const hasFrameParam = url.searchParams.has('fc-frame');
-                const isWarpcast = url.hostname.includes('warpcast.com');
-                const miniAppParam = url.searchParams.get('miniApp') === 'true' ||
-                    url.pathname.includes('/miniapp');
+                if (miniAppResult) {
+                    try {                        
+                        const context = await sdk.context;
+                        console.log("Successfully connected to Farcaster Mini App context");
 
-
-                const isMiniAppEnv = inIframe || hasFrameParam || isWarpcast || miniAppParam;
-
-                setIsMiniApp(isMiniAppEnv);
-
-
-                if (isMiniAppEnv && window.FrameSDK) {
-                    try {
-                        const sdk = window.FrameSDK;
-                        if (sdk && sdk.context) {
-                            console.log("Successfully connected to Farcaster Mini App context");
-
-                            // If we need to reference the FID for debugging
-                            sdk.context.then((context: any) => {
-                                if (context?.user?.fid) {
-                                    console.log("User FID:", context.user.fid);
-                                }
-                            }).catch((error: any) => {
-                                console.error("Error getting context:", error);
-                            });
+                        if (context?.user?.fid) {
+                            console.log("User FID:", context.user.fid);
                         }
                     } catch (error) {
                         console.error("Error accessing Mini App context:", error);
-                        // If we can't access the context, we're probably not in a mini app
-                        setIsMiniApp(false);
                     }
                 }
             } catch (error) {
@@ -72,8 +44,7 @@ export function ClientProviders({
             }
         }
         
-        const timer = setTimeout(checkEnvironment, 500);
-        return () => clearTimeout(timer);
+        checkEnvironment();
     }, []);
 
     if (isLoading) {
@@ -84,14 +55,15 @@ export function ClientProviders({
         );
     }
 
-
+    
     if (isMiniApp) {
         return <Providers session={session}>{children}</Providers>;
     }
+
     
     const config = {
-        domain: window.location.host,
-        siweUri: `https://${window.location.host}/login`,
+        domain: typeof window !== 'undefined' ? window.location.host : '',
+        siweUri: typeof window !== 'undefined' ? `https://${window.location.host}/login` : '',
         rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.optimism.io",
     };
 

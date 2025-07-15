@@ -88,7 +88,7 @@ const getFrameV2SDK = () => {
     if (SDK) return SDK;
 
     try {
-      const FrameSDK = require('@farcaster/frame-sdk');
+      const FrameSDK = require('@farcaster/miniapp-sdk');
       return FrameSDK.default || FrameSDK;
     } catch {
       return null;

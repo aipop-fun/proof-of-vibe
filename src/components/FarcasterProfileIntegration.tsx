@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import sdk from "@farcaster/frame-sdk";
+import sdk from "@farcaster/miniapp-sdk";
 import { useFrame } from "./providers/FrameProvider";
 import { SpotifyImage } from "./SpotifyImage";
 import { Button } from "./ui/Button";

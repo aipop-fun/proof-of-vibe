@@ -28,7 +28,7 @@ export function MetaTags({
     }, []);
 
     // Default image URL if not provided
-    const defaultImageUrl = `${baseUrl}/opengraph-image`;
+    const defaultImageUrl = `${baseUrl}/image.png`;
     const finalImageUrl = imageUrl || defaultImageUrl;
 
     // Default target URL is current page

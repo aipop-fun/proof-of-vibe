@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { auth } from "~/auth";
 import "~/app/globals.css";
 import { Providers } from "~/app/providers";
-import Script from "next/script";
+
 
 import AdminWrapper from "~/components/admin/AdminWrapper";
 import { AuthInitializer } from "~/components/AuthInitializer";
@@ -23,14 +23,14 @@ export const metadata: Metadata = {
     title: process.env.NEXT_PUBLIC_FRAME_NAME || "Timbra",
     description: process.env.NEXT_PUBLIC_FRAME_DESCRIPTION || "Share your music vibe with friends on Farcaster",
   },
-  other: {
-    "fc:frame": JSON.stringify({
-      version: "next",
+  other: {    
+    "fc:miniapp": JSON.stringify({
+      version: "1", 
       imageUrl: `${process.env.NEXT_PUBLIC_URL}/opengraph-image`,
       button: {
         title: process.env.NEXT_PUBLIC_FRAME_BUTTON_TEXT || "🎵 Open App",
         action: {
-          type: "launch_frame",
+          type: "launch_miniapp", 
           url: process.env.NEXT_PUBLIC_URL,
           name: process.env.NEXT_PUBLIC_FRAME_NAME || "Timbra",
           splashImageUrl: `${process.env.NEXT_PUBLIC_URL}/splash.png`,
@@ -51,20 +51,13 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <head>
-        {/* Ensure Farcaster Frame SDK is loaded properly for both Mini App and website */}
-        <Script
-          src="https://cdn.jsdelivr.net/npm/@farcaster/frame-sdk/dist/index.min.js"
-          strategy="beforeInteractive"
-          crossOrigin="anonymous"
-        />
       </head>
       <body className="min-h-screen bg-black text-white">
         <AuthInitializer>
-        <Providers session={session}>          
-          {children}
-          {/* Admin UI Components carregados de forma dinâmica */}
-          <AdminWrapper />
-        </Providers>
+          <Providers session={session}>
+            {children}
+            <AdminWrapper />
+          </Providers>
         </AuthInitializer>
       </body>
     </html>
