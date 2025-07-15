@@ -1,10 +1,9 @@
 /* eslint-disable react/no-unescaped-entities, @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 'use client';
 
 import { useEffect, useState } from 'react';
 import { SignInButton } from '@farcaster/auth-kit';
-import  isInMiniApp  from '@farcaster/frame-sdk';
+import { sdk } from '@farcaster/miniapp-sdk';
 import { useRouter } from 'next/navigation';
 import { useUserStore } from '~/lib/stores/userStore';
 
@@ -13,15 +12,12 @@ export default function LoginPage() {
     const { isAuthenticated } = useUserStore();
     const router = useRouter();
 
-    // Check environment and redirect if already authenticated
     useEffect(() => {
         async function initPage() {
             try {
-                // Check if in mini app
-                const miniAppResult = await isInMiniApp();
+                const miniAppResult = await sdk.isInMiniApp();
                 setIsMiniApp(miniAppResult);
-
-                // If authenticated, redirect to home page
+                
                 if (isAuthenticated) {
                     router.push('/');
                 }
@@ -34,12 +30,12 @@ export default function LoginPage() {
         initPage();
     }, [isAuthenticated, router]);
 
-    // If loading environment check, show loading state
+    
     if (isMiniApp === null) {
         return <div className="flex justify-center items-center h-screen">Loading...</div>;
     }
 
-    // If in mini app, show information message
+    
     if (isMiniApp) {
         return (
             <div className="flex flex-col items-center justify-center h-screen p-4 text-center">
@@ -57,7 +53,7 @@ export default function LoginPage() {
         );
     }
 
-    // Regular web experience with SignInButton from auth-kit
+    
     return (
         <div className="flex flex-col items-center justify-center h-screen p-4">
             <h1 className="text-2xl font-bold mb-6">Sign in to Timbra</h1>

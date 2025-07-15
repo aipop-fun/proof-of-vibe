@@ -1,4 +1,4 @@
-import sdk from "@farcaster/frame-sdk";
+import sdk from "@farcaster/miniapp-sdk";
 
 /**
  * Handles dismissing the splash screen in Farcaster Mini App context

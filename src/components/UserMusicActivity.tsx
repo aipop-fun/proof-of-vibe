@@ -5,7 +5,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { SpotifyImage } from "./SpotifyImage";
 import { formatRelativeTime } from "~/lib/utils";
-import sdk from "@farcaster/frame-sdk";
+import sdk from "@farcaster/miniapp-sdk";
 import { useFrame } from "./providers/FrameProvider";
 
 export interface UserTrack {

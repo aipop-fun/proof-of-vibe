@@ -6,7 +6,7 @@ import { SpotifyImage } from '~/components/SpotifyImage';
 import { Button } from '~/components/ui/Button';
 import { useFrame } from '~/components/providers/FrameProvider';
 import { useRouter } from 'next/navigation';
-import sdk from '@farcaster/frame-sdk';
+import sdk from '@farcaster/miniapp-sdk';
 
 export interface SocialUser {
     fid: number;

@@ -137,12 +137,12 @@ export async function getFarcasterMetadata(): Promise<FrameMetadata> {
       name: process.env.NEXT_PUBLIC_FRAME_NAME || "Timbra",
       iconUrl: `${appUrl}/icon.png`,
       homeUrl: appUrl,
-      imageUrl: `${appUrl}/opengraph-image`,
+      imageUrl: `${appUrl}/image.png`,
       buttonTitle: process.env.NEXT_PUBLIC_FRAME_BUTTON_TEXT || "Share your vibe",
       splashImageUrl: `${appUrl}/splash.png`,
       splashBackgroundColor: "#8A2BE2",
       webhookUrl,
-    },
+    },  
   };
 }
 

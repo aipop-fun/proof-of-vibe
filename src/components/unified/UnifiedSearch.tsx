@@ -13,7 +13,7 @@ import { useValidation } from '~/lib/hooks/useCommon';
 import { FarcasterUserSchema, TrackSchema } from '~/lib/schemas';
 import { useRouter } from 'next/navigation';
 import { useFrame } from '~/components/providers/FrameProvider';
-import sdk from '@farcaster/frame-sdk';
+import sdk from '@farcaster/miniapp-sdk';
 
 
 const UnifiedSearchPropsSchema = z.object({

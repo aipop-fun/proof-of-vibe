@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any,  @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
-import { notificationDetailsSchema } from "@farcaster/frame-sdk";
+import { notificationDetailsSchema } from "@farcaster/miniapp-sdk";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { setUserNotificationDetails } from "~/lib/kv";

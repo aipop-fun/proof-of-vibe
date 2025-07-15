@@ -4,7 +4,7 @@
 import { useEffect } from 'react';
 import { useAuthStore } from '~/lib/stores/authStore';
 import { NavigationHelper } from '~/lib/utils/navigation';
-import sdk from "@farcaster/frame-sdk";
+import sdk from "@farcaster/miniapp-sdk";
 
 /**
  * Component to initialize authentication state across the app

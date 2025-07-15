@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { SpotifyImage } from "./SpotifyImage";
-import sdk from "@farcaster/frame-sdk";
+import sdk from "@farcaster/miniapp-sdk";
 import { Button } from "./ui/Button";
 
 interface CurrentTrack {

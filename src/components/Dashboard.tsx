@@ -15,7 +15,7 @@ import { useFrame } from '~/components/providers/FrameProvider';
 import { useAuthStore } from '~/lib/stores/authStore';
 import { useValidation } from '~/lib/hooks/useCommon';
 import { LoadingState } from './ui/LoadingStates';
-import sdk from '@farcaster/frame-sdk';
+import sdk from '@farcaster/miniapp-sdk';
 
 import { AuthDebugPanel } from '~/components/AuthDebugPanel';
 import { SpotifyApiTester } from '~/components/SpotifyApiTester';

@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '~/lib/stores/authStore';
 import { SpotifyImage } from './SpotifyImage';
 import { useFrame } from './providers/FrameProvider';
-import sdk from "@farcaster/frame-sdk";
+import sdk from "@farcaster/miniapp-sdk";
 import { TrackListSkeleton } from './SkeletonLoader';
 import { TimeRange } from '~/lib/stores/authStore';
 

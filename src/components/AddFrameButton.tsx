@@ -2,7 +2,7 @@
 "use client";
 
 import React from "react";
-import sdk from "@farcaster/frame-sdk";
+import sdk from "@farcaster/miniapp-sdk";
 import { useFrame } from "./providers/FrameProvider";
 
 export function AddFrameButton() {

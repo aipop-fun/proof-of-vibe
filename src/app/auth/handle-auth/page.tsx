@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '~/lib/stores/authStore';
 import { signIn as nextAuthSignIn } from "next-auth/react";
-import sdk from "@farcaster/frame-sdk";
+import sdk from "@farcaster/miniapp-sdk";
 
 export default function HandleAuth() {
     const router = useRouter();

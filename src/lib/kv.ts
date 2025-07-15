@@ -1,8 +1,8 @@
-import { FrameNotificationDetails } from "@farcaster/frame-sdk";
+import { MiniAppNotificationDetails } from "@farcaster/miniapp-sdk";
 import { Redis } from "@upstash/redis";
 
 // In-memory fallback storage
-const localStore = new Map<string, FrameNotificationDetails>();
+const localStore = new Map<string, MiniAppNotificationDetails>();
 
 // Use Redis if KV env vars are present, otherwise use in-memory
 const useRedis = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
@@ -17,17 +17,17 @@ function getUserNotificationDetailsKey(fid: number): string {
 
 export async function getUserNotificationDetails(
   fid: number
-): Promise<FrameNotificationDetails | null> {
+): Promise<MiniAppNotificationDetails | null> {
   const key = getUserNotificationDetailsKey(fid);
   if (redis) {
-    return await redis.get<FrameNotificationDetails>(key);
+    return await redis.get<MiniAppNotificationDetails>(key);
   }
   return localStore.get(key) || null;
 }
 
 export async function setUserNotificationDetails(
   fid: number,
-  notificationDetails: FrameNotificationDetails
+  notificationDetails: MiniAppNotificationDetails
 ): Promise<void> {
   const key = getUserNotificationDetailsKey(fid);
   if (redis) {

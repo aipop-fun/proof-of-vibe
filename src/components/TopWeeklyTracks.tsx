@@ -4,7 +4,7 @@
 import { FC, useState } from "react";
 import Image from "next/image";
 import { useMusic } from "./MusicContext";
-import sdk from "@farcaster/frame-sdk";
+import sdk from "@farcaster/miniapp-sdk";
 
 // Define a flexible interface for tracks
 interface WeeklyTrack {

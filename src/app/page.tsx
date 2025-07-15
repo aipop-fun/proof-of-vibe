@@ -1,4 +1,4 @@
-/* eslint-disable  @typescript-eslint/no-unused-vars, react/no-unescaped-entities */
+/* eslint-disable @typescript-eslint/no-unused-vars, react/no-unescaped-entities */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -9,6 +9,7 @@ import { MusicProvider } from "~/components/MusicContext";
 import { Button } from "~/components/ui/Button";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "~/lib/stores/authStore";
+import { sdk } from '@farcaster/miniapp-sdk';
 
 export default function App() {
   const { isSDKLoaded, context } = useFrame();
@@ -16,7 +17,7 @@ export default function App() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
 
-  // Use our Zustand auth store
+  
   const { isAuthenticated, isExpired, accessToken, isLinked } = useAuthStore();
 
   useEffect(() => {
@@ -26,7 +27,26 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Debug logging
+  
+  useEffect(() => {
+    const initMiniApp = async () => {
+      try {
+        const isMiniApp = await sdk.isInMiniApp();
+        if (isMiniApp) {
+          await sdk.actions.ready();
+          console.log("Mini App is ready");
+        }
+      } catch (error) {
+        console.error("Error initializing Mini App:", error);
+      }
+    };
+
+    if (!isLoading) {
+      initMiniApp();
+    }
+  }, [isLoading]);
+
+  
   useEffect(() => {
     console.log("Auth status:", {
       zustandAuth: isAuthenticated,
@@ -36,7 +56,7 @@ export default function App() {
     });
   }, [isAuthenticated, status, isExpired, accessToken]);
 
-  // Redirect to sign-in page if not authenticated via Zustand
+  
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       console.log("Not authenticated via Zustand, redirecting to sign-in");
@@ -55,7 +75,7 @@ export default function App() {
     );
   }
 
-  // If not authenticated via Zustand, show a button to go to sign-in page
+  
   if (!isAuthenticated) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-b from-purple-900 to-black text-white px-4">
@@ -92,7 +112,7 @@ export default function App() {
     );
   }
 
-  // If authenticated, show the dashboard
+  
   return (
     <div
       className="flex flex-col min-h-screen bg-gradient-to-b from-purple-900 to-black text-white"
